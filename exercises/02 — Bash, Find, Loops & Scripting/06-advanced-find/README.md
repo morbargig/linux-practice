@@ -1,4 +1,4 @@
-# Exercise 16 – Advanced find Patterns
+# Exercise 06 – Advanced find Patterns
 
 ## Goal
 Master advanced `find` patterns and options.

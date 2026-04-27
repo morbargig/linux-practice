@@ -1,4 +1,4 @@
-# Exercise 15 – Piping and Redirection
+# Exercise 05 – Piping and Redirection
 
 ## Goal
 Master piping (`|`) and redirection (`>`, `>>`, `<`).

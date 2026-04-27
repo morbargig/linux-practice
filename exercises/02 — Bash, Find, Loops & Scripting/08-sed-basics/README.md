@@ -1,4 +1,4 @@
-# Exercise 18 – sed Basics
+# Exercise 08 – sed Basics
 
 ## Goal
 Learn basic text manipulation with `sed`.

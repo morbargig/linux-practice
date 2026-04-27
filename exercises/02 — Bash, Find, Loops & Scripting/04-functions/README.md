@@ -1,4 +1,4 @@
-# Exercise 14 – Functions
+# Exercise 04 – Functions
 
 ## Goal
 Learn to create and use functions in bash scripts.

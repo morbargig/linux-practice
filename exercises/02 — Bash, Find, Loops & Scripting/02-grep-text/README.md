@@ -1,4 +1,4 @@
-# Exercise 12 – grep for Text Search
+# Exercise 02 – grep for Text Search
 
 ## Goal
 Learn to search text in files using `grep`.

@@ -1,4 +1,4 @@
-# Exercise 17 – Error Handling
+# Exercise 07 – Error Handling
 
 ## Goal
 Learn to handle errors gracefully in bash scripts.

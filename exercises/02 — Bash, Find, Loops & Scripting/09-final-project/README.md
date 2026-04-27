@@ -1,4 +1,4 @@
-# Exercise 19 – Final Project: Backup Script
+# Exercise 09 – Final Project: Backup Script
 
 ## Goal
 Create a complete backup script combining all learned concepts.

@@ -17,13 +17,18 @@ warn() {
 }
 
 # Check challenge script exists
-[ -f exercises/09-challenge/analyzer.sh ] || fail "Challenge script missing"
+[ -f "exercises/01 — Linux Fundamentals/09-challenge/analyzer.sh" ] || fail "Challenge script missing"
 
 # Basic check: scripts should be executable or at least present
-for f in exercises/*/*.sh; do
+# Layout: exercises/<lesson>/<exercise-dir>/*.sh
+shopt -s nullglob
+scripts_found=0
+for f in exercises/*/*/*.sh; do
   [ -f "$f" ] || fail "Missing: $f"
+  scripts_found=$((scripts_found + 1))
 done
-pass "All exercise scripts exist"
+[ "$scripts_found" -gt 0 ] || fail "No exercise scripts found under exercises/*/*/"
+pass "All exercise scripts exist ($scripts_found files)"
 
 # Check for TODO markers (should exist in incomplete exercises)
 echo ""
@@ -31,31 +36,31 @@ echo "Checking for TODO markers..."
 
 # Exercises that should have TODOs (students need to complete)
 exercises_with_todos=(
-  "exercises/01-tools/tasks.sh"
-  "exercises/02-vscode-bash/hello.sh"
-  "exercises/03-find/find_basic.sh"
-  "exercises/03-find/find_advanced.sh"
-  "exercises/04-loops/for_loop.sh"
-  "exercises/04-loops/while_loop.sh"
-  "exercises/05-if-else/conditions.sh"
-  "exercises/06-find-plus-loop/process_logs.sh"
-  "exercises/07-first-script/cleanup.sh"
-  "exercises/08-debugging/debug_me.sh"
-  "exercises/09-challenge/analyzer.sh"
-  "exercises/10-basic-commands/basic_commands.sh"
-  "exercises/11-file-operations/file_ops.sh"
-  "exercises/12-grep-text/grep_search.sh"
-  "exercises/13-variables-arrays/variables.sh"
-  "exercises/14-functions/functions.sh"
-  "exercises/15-piping-redirection/piping.sh"
-  "exercises/16-advanced-find/advanced_find.sh"
-  "exercises/17-error-handling/error_handling.sh"
-  "exercises/18-sed-basics/sed_basics.sh"
-  "exercises/19-final-project/backup.sh"
+  "exercises/01 — Linux Fundamentals/01-tools/tasks.sh"
+  "exercises/01 — Linux Fundamentals/02-vscode-bash/hello.sh"
+  "exercises/01 — Linux Fundamentals/03-find/find_basic.sh"
+  "exercises/01 — Linux Fundamentals/03-find/find_advanced.sh"
+  "exercises/01 — Linux Fundamentals/04-loops/for_loop.sh"
+  "exercises/01 — Linux Fundamentals/04-loops/while_loop.sh"
+  "exercises/01 — Linux Fundamentals/05-if-else/conditions.sh"
+  "exercises/01 — Linux Fundamentals/06-find-plus-loop/process_logs.sh"
+  "exercises/01 — Linux Fundamentals/07-first-script/cleanup.sh"
+  "exercises/01 — Linux Fundamentals/08-debugging/debug_me.sh"
+  "exercises/01 — Linux Fundamentals/09-challenge/analyzer.sh"
+  "exercises/01 — Linux Fundamentals/10-basic-commands/basic_commands.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/01-file-operations/file_ops.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/02-grep-text/grep_search.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/03-variables-arrays/variables.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/04-functions/functions.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/05-piping-redirection/piping.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/06-advanced-find/advanced_find.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/07-error-handling/error_handling.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/08-sed-basics/sed_basics.sh"
+  "exercises/02 — Bash, Find, Loops & Scripting/09-final-project/backup.sh"
 )
 
 # Check if scripts are executable
-for f in exercises/*/*.sh; do
+for f in exercises/*/*/*.sh; do
   if [ ! -x "$f" ]; then
     warn "$f is not executable (run: chmod +x $f)"
   fi
@@ -92,9 +97,9 @@ echo "Exercise status:"
 for exercise in "${exercises_with_todos[@]}"; do
   if [ -f "$exercise" ]; then
     if grep -q "_____" "$exercise" 2>/dev/null; then
-      echo "  ⏳ $(basename $(dirname $exercise))/$(basename $exercise) - needs completion"
+      echo "  ⏳ $(basename "$(dirname "$exercise")")/$(basename "$exercise") - needs completion"
     else
-      echo "  ✅ $(basename $(dirname $exercise))/$(basename $exercise) - completed"
+      echo "  ✅ $(basename "$(dirname "$exercise")")/$(basename "$exercise") - completed"
     fi
   fi
 done

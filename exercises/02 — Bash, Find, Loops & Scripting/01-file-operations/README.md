@@ -1,4 +1,4 @@
-# Exercise 11 – File Operations
+# Exercise 01 – File Operations
 
 ## Goal
 Practice file operations: `cp`, `mv`, `mkdir`, and `rm`.

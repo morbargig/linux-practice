@@ -5,9 +5,10 @@ This repository is a hands-on practice project for Linux scripting fundamentals 
 **Lesson 01** - Linux Fundamentals: Tools, scripts, find, loops, conditions, debugging  
 **Lesson 02** - Bash, Find, Loops & Scripting: File operations, text processing, variables, functions, error handling  
 **Lesson 03** - Users, Groups & Environments: User management, groups, sudo, environment variables  
-**Lesson 04** - Permissions, Processes & Text Pipelines: File permissions, process management, disk usage, text processing
+**Lesson 04** - Permissions, Processes & Text Pipelines: File permissions, process management, disk usage, text processing  
+**Lesson 05** - Linux Networking for Technicians: IP and interfaces, connectivity, DNS, ports, routing, firewall awareness, troubleshooting
 
-## Lessons Overview (38 exercises total, ~10.5 hours)
+## Lessons Overview (45 exercises total, ~12.5 hours)
 
 ### [Lesson 01 – Linux Fundamentals](exercises/01%20%E2%80%94%20Linux%20Fundamentals/) (10 exercises, ~2.5 hours)
 Learn the essential building blocks of bash scripting:
@@ -49,6 +50,16 @@ Essential system administration and text processing skills:
 **Prerequisites:** Completion of Lessons 01, 02, and 03  
 **See:** [exercises/04%20%E2%80%94%20Permissions%2C%20Processes%20%26%20Text%20Pipelines/README.md](exercises/04%20%E2%80%94%20Permissions%2C%20Processes%20%26%20Text%20Pipelines/README.md)
 
+### [Lesson 05 – Linux Networking for Technicians](exercises/05%20%E2%80%94%20Linux%20Networking%20for%20Technicians/) (7 exercises, ~2 hours)
+Practice how a technician verifies network health without unsafe automation:
+- IP addresses, interfaces, and default routes (`ip`, `hostname`)
+- Connectivity and DNS (`ping`, `nslookup`, `dig`, `/etc/resolv.conf`)
+- Listening ports and local HTTP checks (`ss`, `curl`)
+- UFW awareness (manual, optional `sudo` only)
+
+**Prerequisites:** Completion of earlier lessons through Lesson 04 (recommended)  
+**See:** [exercises/05%20%E2%80%94%20Linux%20Networking%20for%20Technicians/README.md](exercises/05%20%E2%80%94%20Linux%20Networking%20for%20Technicians/README.md)
+
 ## Quick Start
 1) Clone
 ```bash
@@ -89,3 +100,4 @@ cd linux-practice-find-loops
   - `02 — Bash, Find, Loops & Scripting/`: Advanced scripting (9 exercises)
   - `03 — Users, Groups & Environments/`: User management & environment (10 exercises)
   - `04 — Permissions, Processes & Text Pipelines/`: Permissions, processes & text processing (9 exercises)
+  - `05 — Linux Networking for Technicians/`: Networking checks & troubleshooting (7 exercises)

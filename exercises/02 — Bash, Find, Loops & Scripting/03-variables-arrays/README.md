@@ -1,4 +1,4 @@
-# Exercise 13 – Variables and Arrays
+# Exercise 03 – Variables and Arrays
 
 ## Goal
 Practice using variables and arrays in bash.
