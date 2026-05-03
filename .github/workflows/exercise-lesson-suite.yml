@@ -1,6 +1,6 @@
 name: Lesson exercise suite
 
-# Invoked once per lesson from exercise-tests.yml; prepares lab once then runs exercises sequentially on one runner.
+# Invoked once per lesson from exercise-tests.yml; runs an ordered matrix of exercises.
 on:
   workflow_call:
     inputs:
@@ -38,7 +38,7 @@ jobs:
           CI_LESSON_DIR: ${{ inputs.lesson_dir }}
         run: bash scripts/ci-discover-matrix.sh
 
-  # One setup.sh + dd big.bin per lesson; tarball reused between exercises on the sequential runner below.
+  # One apt update + package install + setup.sh + dd big.bin per lesson; exercise jobs restore APT + lab snapshots (no apt-get update).
   prepare_lesson:
     name: Prepare lab (${{ inputs.lesson_cache_key }})
     needs: discover_exercises
@@ -46,11 +46,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache APT archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-
+
+      - name: Install tooling used by exercises and harness
+        run: |
+          sudo apt-get update -qq
+          bash scripts/ci-apt-install-packages.sh .github/ci-apt-packages.txt
+
       - name: Run setup.sh once for this lesson
         run: bash scripts/setup.sh
 
       - name: Pack lab snapshot
         run: tar czf lesson-lab.tgz lab/
+
+      - name: Pack APT snapshot (archives + lists for exercise jobs)
+        run: |
+          set -euo pipefail
+          sudo tar czf - \
+            --exclude='var/cache/apt/archives/partial' \
+            -C / var/cache/apt/archives var/lib/apt/lists > ci-apt-snapshot.tgz
+          [[ -s ci-apt-snapshot.tgz ]]
 
       - name: Upload lab snapshot
         uses: actions/upload-artifact@v4
@@ -58,30 +79,24 @@ jobs:
           name: lesson-lab-${{ inputs.lesson_cache_key }}
           path: lesson-lab.tgz
 
-  # Single runner per lesson: APT/tooling once; exercises run strictly in order with lab restored each time.
-  run_lesson_exercises:
-    name: ${{ inputs.lesson_job_title }} — sequential exercises
+      - name: Upload APT snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesson-apt-${{ inputs.lesson_cache_key }}
+          path: ci-apt-snapshot.tgz
+
+  test_exercises:
+    name: ${{ matrix.job_title }}
     needs:
       - discover_exercises
       - prepare_lesson
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.discover_exercises.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache APT archives and lists
-        uses: actions/cache@v4
-        with:
-          path: |
-            /var/cache/apt/archives
-            /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/ci-apt-packages.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-
-
-      - name: Install tooling used by exercises and harness
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends tree jq iproute2
 
       - name: Download lab snapshot from prepare_lesson
         uses: actions/download-artifact@v4
@@ -89,35 +104,51 @@ jobs:
           name: lesson-lab-${{ inputs.lesson_cache_key }}
           path: downloaded/
 
-      - name: Run exercises sequentially (one install; ordered lab restores)
-        id: sequential_tests
+      - name: Download APT snapshot from prepare_lesson
+        uses: actions/download-artifact@v4
+        with:
+          name: lesson-apt-${{ inputs.lesson_cache_key }}
+          path: downloaded/
+
+      - name: Restore APT snapshot (skip apt-get update on fresh runners)
+        run: sudo tar xzf downloaded/ci-apt-snapshot.tgz -C /
+
+      - name: Install tooling from snapshot lists/archives
+        run: bash scripts/ci-apt-install-packages.sh .github/ci-apt-packages.txt
+
+      - name: Restore lab snapshot (same baseline as prepare_lesson)
+        run: |
+          rm -rf lab
+          tar xzf downloaded/lesson-lab.tgz
+
+      - name: Run exercise tests (filtered)
+        id: filtered_tests
         env:
-          MATRIX_JSON: ${{ needs.discover_exercises.outputs.matrix }}
-          LESSON_DIR: ${{ inputs.lesson_dir }}
-          LAB_ARCHIVE: downloaded/lesson-lab.tgz
           PROGRESS_STUDENT_ID: ${{ github.actor }}
-        run: bash scripts/ci-run-lesson-exercises-sequential.sh
+          RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
+          RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
+        run: bash scripts/run-all-tests.sh
         continue-on-error: true
 
       - name: Upload NDJSON fragment
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: matrix-ndjson-${{ inputs.lesson_cache_key }}
+          name: matrix-ndjson-${{ matrix.key }}
           path: reports/.last-run.ndjson
           if-no-files-found: ignore
 
-      - name: Lesson exercise summary
+      - name: Cell summary
         if: always()
         run: |
           {
-            echo "### ${{ inputs.lesson_job_title }}"
+            echo "### ${{ matrix.job_title }}"
             echo ""
-            echo "- **Outcome:** ${{ steps.sequential_tests.outcome }}"
-            echo "- **Runner:** single job — APT/cache once per lesson; exercises **serial** (never parallel)."
-            echo "- **NDJSON artifact:** \`matrix-ndjson-${{ inputs.lesson_cache_key }}\`"
+            echo "- **Outcome:** ${{ steps.filtered_tests.outcome }}"
+            echo "- **Artifact key:** \`${{ matrix.key }}\`"
+            echo "- **Paths:** \`${{ matrix.lesson_dir }}\` → \`${{ matrix.exercise_slug }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Propagate test failure
-        if: steps.sequential_tests.outcome != 'success'
+        if: steps.filtered_tests.outcome != 'success'
         run: exit 1

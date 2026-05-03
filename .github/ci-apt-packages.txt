@@ -1,4 +1,4 @@
-# Packages installed by Exercise CI jobs — editing this busts the APT cache key (archives + lists).
+# Packages installed by Exercise CI jobs — editing this busts the APT archives cache key.
 tree
 jq
 iproute2
