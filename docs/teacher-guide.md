@@ -23,12 +23,14 @@ These paths are listed in `.gitignore` so students do not accidentally commit sc
 
 Repeat per student fork (or integrate artifacts into your LMS later using `progress.json`).
 
+**Parallel CI:** Each exercise uploads a small **`matrix-ndjson-*`** fragment (`reports/.last-run.ndjson`). The **`aggregate_reports`** job downloads all fragments, concatenates them, and **`scripts/generate-progress-report.sh`** sorts rows by **`lesson_number`** then **`exercise_number`**, so combined **`progress.json`** / **`progress-report.md`** do not depend on job finish order. Top-level **`last_run_utc`** in **`progress.json`** is the **latest** shard timestamp after merge.
+
 ## Reading `progress.json`
 
 Top-level fields:
 
 - `student_github_username` — `github.actor` in CI, or `PROGRESS_STUDENT_ID`, or local `whoami`.
-- `last_run_utc` — timestamp applied to each row for that run.
+- `last_run_utc` — header field uses the **latest** shard time after CI merges **`matrix-ndjson-*`** fragments; each **`dashboard_rows`** / **`lessons[].exercises`** entry still has its own timestamp from that exercise run.
 - `summary.passed`, `summary.failed`, `summary.skipped`, `summary.graded_total`, `summary.percent`
 - `lessons[]` — grouped exercises with messages and paths.
 - `dashboard_rows[]` — flat list aligned with the columns you requested: **student, lesson #, exercise #, slug, status, last_run_utc, message, path**.
