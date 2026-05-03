@@ -31,7 +31,7 @@ jobs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Discover exercises for lesson
         id: set_matrix
@@ -41,7 +41,7 @@ jobs:
         run: bash scripts/ci-discover-matrix.sh
 
       - name: Cache APT archives
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /var/cache/apt/archives
           key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
@@ -69,7 +69,7 @@ jobs:
 
       # Single artifact ⇒ one download per exercise job (smaller Actions overhead than two uploads).
       - name: Upload lesson CI bundle (lab + APT snapshot)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lesson-ci-${{ inputs.lesson_cache_key }}
           path: |
@@ -84,10 +84,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare_lesson.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download lesson CI bundle from prepare_lesson
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lesson-ci-${{ inputs.lesson_cache_key }}
           path: downloaded/
@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload NDJSON fragment
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: matrix-ndjson-${{ matrix.key }}
           path: reports/.last-run.ndjson
