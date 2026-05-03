@@ -92,7 +92,9 @@ cd linux-practice-find-loops
 
 **CI:** pushes and pull requests run [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) on Ubuntu (installs `tree` + `jq`, runs `setup.sh`, then the harness). Download the **`progress-reports`** artifact from the Actions run for Markdown/JSON suitable for instructors.
 
-**Guides:** [Student: run tests & submit](docs/student-guide.md) · [Teacher: read reports & add exercises](docs/teacher-guide.md)
+**Students:** failing Actions runs are normal until you finish the exercises—the workflow runs the same full harness as `./scripts/run-all-tests.sh`.
+
+**Guides:** [Student: run tests & submit](docs/student-guide.md) · [Teacher: reports, layout & branch policy](docs/teacher-guide.md)
 
 ## Rules
 - Do not delete the TODO comments
@@ -104,6 +106,7 @@ cd linux-practice-find-loops
 - `docs/`    : student & teacher guides for testing and grading
 - `lab/`     : generated practice files (safe sandbox)
 - `exercises/`: lessons organized by topic
+  - `exercises/lab` → symlink to [`lab/`](lab/) so paths like `../../lab/files` resolve (see [student guide](docs/student-guide.md))
   - `01 — Linux Fundamentals/`: Basic bash scripting (10 exercises)
   - `02 — Bash, Find, Loops & Scripting/`: Advanced scripting (9 exercises)
   - `03 — Users, Groups & Environments/`: User management & environment (10 exercises)
