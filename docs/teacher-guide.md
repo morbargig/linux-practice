@@ -24,7 +24,7 @@ On **Actions → Exercise tests →** pick a run → **Artifacts**:
 | --- | --- | --- |
 | **`progress-reports`** | **Yes** | **`progress-report.md`** + **`progress.json`** merged across all exercises (`Aggregate progress reports` job). |
 | **`ci-lesson-bundle-*`** | **No** | Large internal ZIP (~lab + APT snapshot) so runners share `setup.sh`/`lab/` — **not** your scorecard. Auto-deleted after **3 days**. |
-| **`matrix-ndjson-*`** | **No** | Tiny shards consumed only by aggregation — ignore unless debugging CI. |
+| **`matrix-ndjson-*`** | **No** | One **`reports/ci-shards/<key>.ndjson`** per exercise job — aggregation-only; ignore unless debugging CI. |
 
 Steps:
 
@@ -33,7 +33,7 @@ Steps:
 3. Download **`progress-reports`** only for grading/archival.
 4. Optional: **Aggregate progress reports** job → **Summary** for a short Markdown overview.
 
-Parallel shards upload **`matrix-ndjson-*`**; **`aggregate_reports`** concatenates them (sorted paths), then **`scripts/generate-progress-report.sh`** **`sort_by(.lesson_number, .exercise_number)`**, so ordering does not depend on which exercise job finished first. Combined **`progress.json`** header **`last_run_utc`** is the **latest** shard timestamp.
+Parallel shards upload **`matrix-ndjson-*`** (each artifact holds a uniquely named **`*.ndjson`** file so merges don’t overwrite). **`aggregate_reports`** concatenates **`artifacts/**/*.ndjson`** (sorted paths), then **`scripts/generate-progress-report.sh`** **`sort_by(.lesson_number, .exercise_number)`**, so ordering does not depend on which exercise job finished first. Combined **`progress.json`** header **`last_run_utc`** is the **latest** shard timestamp.
 
 ## Reading `progress.json`
 
@@ -157,6 +157,7 @@ Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
 
 ## Troubleshooting
 
+- **`progress-reports` missing on the Actions run** — Open job **Aggregate progress reports**: if shard download failed or zero **`*.ndjson`** files were merged, only **`ci-lesson-bundle-*`** artifacts will appear (those are lab/APTs, not grades). Ensure exercise jobs succeeded enough to upload **`matrix-ndjson-*`**; merge runs **`if: always()`** after downloads.
 - **Empty `reports/.last-run.ndjson` / missing reports** — ensure `jq` is installed; rerun `scripts/run-all-tests.sh`.
 - **False fails on student laptops** — remind students that CI is **Ubuntu**; WSL2 or a container reduces drift.
 - **Red CI while placeholders remain** — unfinished starters still contain `_____`; see **Branch policy** above. Keep an instructor-only branch or fork when you need an always-green baseline for comparison.

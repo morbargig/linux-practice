@@ -129,12 +129,22 @@ jobs:
         run: bash scripts/run-all-tests.sh
         continue-on-error: true
 
+      # Unique basename per shard so aggregate merge-multiple does not overwrite the same path.
+      - name: Stage NDJSON shard for upload
+        if: always()
+        run: |
+          mkdir -p reports/ci-shards
+          key="${{ matrix.key }}"
+          if [[ -f reports/.last-run.ndjson ]] && [[ -s reports/.last-run.ndjson ]]; then
+            cp reports/.last-run.ndjson "reports/ci-shards/${key}.ndjson"
+          fi
+
       - name: Upload NDJSON fragment
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: matrix-ndjson-${{ matrix.key }}
-          path: reports/.last-run.ndjson
+          path: reports/ci-shards/${{ matrix.key }}.ndjson
           if-no-files-found: ignore
 
       - name: Cell summary
