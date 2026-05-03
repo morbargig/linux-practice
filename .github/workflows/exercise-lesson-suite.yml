@@ -1,6 +1,9 @@
 name: Lesson exercise suite
 
-# Invoked once per lesson from exercise-tests.yml — one runner per lesson (tooling + setup once).
+# Invoked once per lesson from exercise-tests.yml.
+# One runner per lesson: checkout → APT (cached archives) → setup.sh → full lesson harness.
+# Sequential exercise matrix jobs were removed — they restarted a VM each time and repeated APT
+# despite max-parallel: 1 (GitHub Actions matrix = separate jobs).
 on:
   workflow_call:
     inputs:
@@ -24,7 +27,7 @@ permissions:
   actions: write # actions/cache save/restore for APT archives
 
 jobs:
-  run_lesson:
+  lesson_exercises:
     name: ${{ inputs.lesson_job_title }}
     runs-on: ubuntu-latest
     steps:
@@ -41,9 +44,9 @@ jobs:
       - name: Install tooling used by exercises and harness
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends tree jq iproute2
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tree jq iproute2
 
-      - name: Run setup.sh once for this lesson
+      - name: Prepare lab fixtures once
         run: bash scripts/setup.sh
 
       - name: Run all exercises for this lesson
@@ -54,7 +57,7 @@ jobs:
         run: bash scripts/run-all-tests.sh
         continue-on-error: true
 
-      - name: Upload NDJSON for this lesson
+      - name: Upload NDJSON fragment
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -62,15 +65,14 @@ jobs:
           path: reports/.last-run.ndjson
           if-no-files-found: ignore
 
-      - name: Lesson summary
+      - name: Cell summary
         if: always()
         run: |
           {
             echo "### ${{ inputs.lesson_job_title }}"
             echo ""
             echo "- **Outcome:** ${{ steps.lesson_tests.outcome }}"
-            echo "- **Artifact key:** \`${{ inputs.lesson_cache_key }}\`"
-            echo "- **Lesson:** \`${{ inputs.lesson_dir }}\` (all exercises, harness order — shared \`lab/\` like a local full-lesson run)"
+            echo "- **Lesson:** \`${{ inputs.lesson_dir }}\` (all exercises in one job)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Propagate test failure

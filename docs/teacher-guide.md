@@ -76,53 +76,54 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 ## CI matrix (GitHub Actions)
 
-CI uses **two workflow layers**: GitHub cannot nest matrices in one file, so the root workflow discovers lessons and calls a **reusable workflow once per lesson**.
-
-**Why one runner per lesson (not one job per exercise)**  
-Each Actions job starts on a **fresh Ubuntu runner**. An inner matrix “one cell per exercise” repeated **`apt-get`** / tooling installs every time even with **`max-parallel: 1`**. The reusable suite instead runs **`scripts/setup.sh`** once and **`run-all-tests.sh`** with **`RUN_LESSON_DIR`** only (all exercises in harness order), so **APT tooling installs once per lesson** and **`lab/`** evolves across exercises **like a local full-lesson run**. Per-exercise isolation is still available locally via **`RUN_EXERCISE_SLUG`**.
+CI uses **two workflow layers**: a **caller** discovers lessons; a **reusable workflow** runs **one Ubuntu job per lesson** (checkout → APT → **`setup.sh`** → **`run-all-tests.sh`** with **`RUN_LESSON_DIR`** only). That avoids repeating tooling on every exercise: a GitHub Actions **matrix cell is always a separate runner**, so an inner “one row per exercise” matrix with **`max-parallel: 1`** still paid **N × (checkout + APT + …)** for N exercises.
 
 | Workflow | Role |
 | --- | --- |
-| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calls **`exercise-lesson-suite.yml`** once per lesson, passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** / **`enforce_success`** unchanged. |
-| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`run_lesson`** — checkout, **`actions/cache`** on **`/var/cache/apt/archives`**, install **`tree` / `jq` / `iproute2`**, **`scripts/setup.sh`**, then **`run-all-tests.sh`** with **`RUN_LESSON_DIR`** (no **`RUN_EXERCISE_SLUG`**). Uploads **`matrix-ndjson-<lesson_cache_key>`** (`reports/.last-run.ndjson`). |
+| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calls **`exercise-lesson-suite.yml`** once per lesson, passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** merges **`matrix-ndjson-*`** fragments; **`enforce_success`** gates the workflow. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | Single job **`lesson_exercises`**: **`actions/cache`** on **`/var/cache/apt/archives`** (key hashes [`.github/ci-apt-packages.txt`](../.github/ci-apt-packages.txt)), **`apt-get install`** for **`tree` / `jq` / `iproute2`**, **`scripts/setup.sh`** once, then **`scripts/run-all-tests.sh`** for the whole lesson (same order as locally). Uploads **`matrix-ndjson-<lesson_cache_key>`** (`reports/.last-run.ndjson`). |
+
+Speed notes ([`actions/cache`](https://github.com/actions/cache/), common APT patterns): caching **`.deb` archives** speeds **`apt-get install`** after the first run on a branch; the larger win here is **one job per lesson** instead of one job per exercise.
 
 ```mermaid
 flowchart LR
   discoverRoot[discover_root_lessons]
   lessonWave[lesson_suite_per_lesson]
-  reusableRun[exercise_lesson_suite]
-  runLesson[run_lesson_single_runner]
+  reusableRun[lesson_exercises_one_runner]
   discoverRoot --> lessonWave
   lessonWave --> reusableRun
-  reusableRun --> runLesson
 ```
 
 **Presentation**
 
 - Root **`lesson_suite`** uses **`job_title`** ending with **`· all exercises`** (lesson wave).
-- Reusable **`run_lesson`** reuses that title; GitHub does not emit separate rows per exercise anymore.
-- **`key`** remains ASCII-safe for artifact names (`matrix-ndjson-…`).
+- **`lesson_cache_key`** stays ASCII-safe for artifact names (`matrix-ndjson-…`).
 
 **Concurrency**
 
-- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
+- Only **one lesson runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
+- All exercises inside a lesson share **one runner** (serial order from **`run-all-tests.sh`**).
 
-Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
+Aggregated **`progress-reports`** still comes from **`download-artifact`** pattern **`matrix-ndjson-*`** (now typically **one fragment per lesson**).
 
 **Discovery env**
 
 | Scope | Variables | Matrix rows |
 | --- | --- | --- |
 | Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | One per lesson folder |
-| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise subfolder (CLI / tooling — **not** used by CI inner suite anymore) |
+| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise (used by **`scripts/ci-discover-matrix.sh`** for local tooling / debugging — CI uses **`RUN_LESSON_DIR`** only for the whole lesson) |
 
-**Local filtered run** (single exercise under a lesson):
+**Local filtered run** — whole lesson (matches CI per lesson):
+
+```bash
+RUN_LESSON_DIR='01 — Linux Fundamentals' bash scripts/run-all-tests.sh
+```
+
+Single exercise only:
 
 ```bash
 RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh
 ```
-
-Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson (**matches CI**).
 
 ## Adding a new exercise
 
