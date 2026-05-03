@@ -69,6 +69,11 @@ Adjust the corresponding `test.sh` if your class policy differs.
 - **`exercises/lab`** is a symlink to **`lab/`** at the repo root so starter scripts using `../../lab/...` resolve correctly from exercise folders. Preserve this symlink when restructuring files.
 - Several exercises recreate scratch files under **`lab/`** (permissions drills, awk samples, backups). Matching paths are **`gitignore`d** so local runs do not clutter `git status`.
 
+## Branch policy (maintainers)
+
+- **`main`** is the **unresolved** student template (TODOs / `_____` placeholders). Learners fork or clone from **`main`**; CI on **`main`** is expected to fail until work is finished (aside from deliberate **skip** tests).
+- **Do not merge** reference or solution branches into **`main`** for repos handed to students. Keep worked answers on a **separate branch or private fork**, rebasing onto **`main`** whenever the template changes—same pattern as an instructor-only “always-green baseline” branch mentioned under Troubleshooting.
+
 ## Adding a new exercise
 
 1. Create **`exercises/<NN — Lesson>/<mm-slug>/`** with README + starter scripts (keep `_____` placeholders if you want CI to fail until completion).
@@ -92,5 +97,5 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 - **Empty `reports/.last-run.ndjson` / missing reports** — ensure `jq` is installed; rerun `scripts/run-all-tests.sh`.
 - **False fails on student laptops** — remind students that CI is **Ubuntu**; WSL2 or a container reduces drift.
-- **Red CI while placeholders remain** — unfinished starters still contain `_____`; failures on the class template branch until students complete work are normal. Keep an instructor solutions branch or fork when you need an always-green baseline for comparison.
+- **Red CI while placeholders remain** — unfinished starters still contain `_____`; see **Branch policy** above. Keep an instructor-only branch or fork when you need an always-green baseline for comparison.
 - **Want stricter/softer grading** — edit the exercise’s `test.sh` assertions; avoid changing the `RESULT …` contract without updating `scripts/run-all-tests.sh`.
