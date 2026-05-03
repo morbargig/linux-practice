@@ -185,8 +185,6 @@ printf '\n━━━━━━━━━━━━━━━━━━━━━━━�
 printf 'Totals — passed: %s  skipped: %s  failed: %s\n' "$total_pass" "$total_skip" "$total_fail"
 printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 
-if [[ -z "${SKIP_PROGRESS_REPORT:-}" ]]; then
-  bash "$REPO_ROOT/scripts/generate-progress-report.sh"
-fi
+bash "$REPO_ROOT/scripts/generate-progress-report.sh"
 
 exit "$overall_fail"

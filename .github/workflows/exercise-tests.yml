@@ -56,7 +56,7 @@ jobs:
     with:
       lesson_dir: ${{ matrix.lesson_dir }}
       lesson_job_title: ${{ matrix.job_title }}
-      lesson_matrix_key: ${{ matrix.key }}
+      lesson_cache_key: ${{ matrix.key }}
 
   aggregate_reports:
     name: Aggregate progress reports

@@ -76,51 +76,53 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 ## CI matrix (GitHub Actions)
 
-CI uses **two workflow layers**: the root workflow walks lessons **one at a time**; each lesson invokes a **reusable workflow** that runs **all exercises for that lesson on a single runner**, in slug order (fast: one checkout, one APT setup, one **`setup.sh`** per lesson).
+CI uses **two workflow layers** so each lesson splits into **ordered exercise jobs** (GitHub cannot nest matrices in one file; this uses a **caller + reusable workflow**).
 
 | Workflow | Role |
 | --- | --- |
-| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calling **`exercise-lesson-suite.yml`** with **`lesson_dir`**, **`lesson_job_title`**, **`lesson_matrix_key`** (artifact id e.g. `01__lesson`). **`aggregate_reports`** merges **`matrix-ndjson-*`** bundles (each file may contain **multiple NDJSON lines**). **`enforce_success`** gates on **`lesson_suite`**. |
-| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`run_lesson_ordered`** — checkout → APT archive cache → install **`tree`/`jq`/`iproute2`** → **`scripts/setup.sh`** once → **[`scripts/ci-run-lesson-exercises-on-runner.sh`](scripts/ci-run-lesson-exercises-on-runner.sh)** loops sorted slugs from **[`scripts/ci-lesson-exercise-slugs.sh`](scripts/ci-lesson-exercise-slugs.sh)**, runs filtered **`run-all-tests.sh`** per slug with **`SKIP_PROGRESS_REPORT=1`**, concatenates NDJSON lines, uploads **`reports/.last-run.ndjson`** as **`matrix-ndjson-<lesson_matrix_key>`** (workflow input). Logs use **`::group::`** per exercise for readability. |
+| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calls **`exercise-lesson-suite.yml`** once per lesson, passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** / **`enforce_success`** unchanged. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`discover_exercises`** — builds the inner exercise matrix. **`prepare_lesson`** — runs **`scripts/setup.sh` once**, packs **`lab/`** into **`lesson-lab.tgz`**, uploads artifact **`lesson-lab-<lesson_cache_key>`** (skips repeating **`dd`** / fixture creation on every exercise). **`test_exercises`** — sequential inner matrix (`max-parallel: 1`): downloads that tarball, restores **`lab/`**, runs filtered **`run-all-tests.sh`** per exercise (still **one job per exercise**, not one job for the whole lesson). APT **`/var/cache/apt/archives`** remains cached via **`actions/cache`**. |
 
 ```mermaid
 flowchart LR
   discoverRoot[discover_root_lessons]
   lessonWave[lesson_suite_per_lesson]
   reusableRun[exercise_lesson_suite]
-  lessonRunner[run_lesson_ordered]
+  prepareLab[prepare_lesson_setup_once]
+  exercisesInner[test_exercises_matrix]
   discoverRoot --> lessonWave
   lessonWave --> reusableRun
-  reusableRun --> lessonRunner
+  reusableRun --> prepareLab
+  prepareLab --> exercisesInner
 ```
 
 **Presentation**
 
-- Root **`lesson_suite`** rows keep **`job_title`** ending with **`· all exercises`**.
-- Exercise titles (**`› slug`**) appear in **log groups** inside **`run_lesson_ordered`**, not as separate GitHub jobs (trade-off for speed).
-- Artifact **`matrix-ndjson-<key>`** holds **one NDJSON object line per exercise** for that lesson.
+- Root **`lesson_suite`** uses **`job_title`** ending with **`· all exercises`** (lesson wave).
+- Inner **`test_exercises`** uses **`›`** plus the exercise folder name after the trimmed lesson title (same **`job_title`** rules as before).
+- **`key`** is ASCII-safe for artifact names only (`matrix-ndjson-…`).
 
 **Concurrency**
 
-- Only **one lesson suite runs at a time** (**`lesson_suite`** **`max-parallel: 1`**).
-- **All exercises in that lesson share one VM** and run **strictly in slug order** (no parallel exercise runners).
+- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
+- Inside each suite, only **one exercise job runs at a time** (**`test_exercises`** **`max-parallel: 1`**).
 
 Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
 
 **Discovery env**
 
-| Scope | Variables | Output |
+| Scope | Variables | Matrix rows |
 | --- | --- | --- |
-| Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | Matrix JSON: one row per lesson folder |
-| Lesson exercises (tooling / scripts) | `CI_DISCOVER_SCOPE=lesson_exercises` + **`CI_LESSON_DIR`** | Matrix JSON via [`ci_discover_matrix.py`](scripts/ci_discover_matrix.py) (optional; CI lesson runner uses [**`ci-lesson-exercise-slugs.sh`**](scripts/ci-lesson-exercise-slugs.sh) for ordering). |
+| Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | One per lesson folder |
+| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise subfolder under that lesson |
 
-**Local filtered run** (matches each harness invocation inside the lesson loop):
+**Local filtered run** (matches each inner exercise cell):
 
 ```bash
 RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh
 ```
 
-To mimic a **whole lesson on one machine**, run **`LESSON_DIR='01 — Linux Fundamentals' bash scripts/ci-run-lesson-exercises-on-runner.sh`** (after **`setup.sh`**).
+Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
 
 ## Adding a new exercise
 

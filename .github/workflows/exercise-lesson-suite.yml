@@ -1,6 +1,6 @@
 name: Lesson exercise suite
 
-# Invoked once per lesson from exercise-tests.yml — single runner runs exercises in order.
+# Invoked once per lesson from exercise-tests.yml; runs an ordered matrix of exercises.
 on:
   workflow_call:
     inputs:
@@ -12,8 +12,8 @@ on:
         description: Title for this reusable workflow run (lesson row)
         required: true
         type: string
-      lesson_matrix_key:
-        description: Stable key for NDJSON artifact (e.g. 01__lesson)
+      lesson_cache_key:
+        description: Stable ASCII id for lab tarball artifact (outer matrix key, e.g. 01__lesson)
         required: true
         type: string
 
@@ -24,8 +24,24 @@ permissions:
   actions: write # actions/cache save/restore for APT archives
 
 jobs:
-  run_lesson_ordered:
-    name: ${{ inputs.lesson_job_title }}
+  discover_exercises:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Discover exercises for lesson
+        id: set_matrix
+        env:
+          CI_DISCOVER_SCOPE: lesson_exercises
+          CI_LESSON_DIR: ${{ inputs.lesson_dir }}
+        run: bash scripts/ci-discover-matrix.sh
+
+  # One setup.sh + dd big.bin per lesson; exercise matrix jobs restore lab tarball only (faster).
+  prepare_lesson:
+    name: Prepare lab (${{ inputs.lesson_cache_key }})
+    needs: discover_exercises
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,41 +59,83 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends tree jq iproute2
 
-      - name: Prepare lab fixtures
+      - name: Run setup.sh once for this lesson
         run: bash scripts/setup.sh
 
-      - name: Run exercises in order (single runner)
-        id: lesson_run
-        env:
-          LESSON_DIR: ${{ inputs.lesson_dir }}
-          PROGRESS_STUDENT_ID: ${{ github.actor }}
-        run: bash scripts/ci-run-lesson-exercises-on-runner.sh
+      - name: Pack lab snapshot
+        run: tar czf lesson-lab.tgz lab/
 
-      - name: Upload lesson NDJSON bundle
+      - name: Upload lab snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesson-lab-${{ inputs.lesson_cache_key }}
+          path: lesson-lab.tgz
+
+  test_exercises:
+    name: ${{ matrix.job_title }}
+    needs:
+      - discover_exercises
+      - prepare_lesson
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.discover_exercises.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache APT archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-
+
+      - name: Install tooling used by exercises and harness
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tree jq iproute2
+
+      - name: Download lab snapshot from prepare_lesson
+        uses: actions/download-artifact@v4
+        with:
+          name: lesson-lab-${{ inputs.lesson_cache_key }}
+          path: downloaded/
+
+      - name: Restore lab snapshot (same baseline as prepare_lesson)
+        run: |
+          rm -rf lab
+          tar xzf downloaded/lesson-lab.tgz
+
+      - name: Run exercise tests (filtered)
+        id: filtered_tests
+        env:
+          PROGRESS_STUDENT_ID: ${{ github.actor }}
+          RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
+          RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
+        run: bash scripts/run-all-tests.sh
+        continue-on-error: true
+
+      - name: Upload NDJSON fragment
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: matrix-ndjson-${{ inputs.lesson_matrix_key }}
+          name: matrix-ndjson-${{ matrix.key }}
           path: reports/.last-run.ndjson
           if-no-files-found: ignore
 
-      - name: Lesson summary
+      - name: Cell summary
         if: always()
         run: |
           {
-            echo "### ${{ inputs.lesson_job_title }}"
+            echo "### ${{ matrix.job_title }}"
             echo ""
-            echo "- **Runner:** single VM; exercises executed **sequentially** in slug order."
-            echo "- **Step outcome:** ${{ steps.lesson_run.outcome }}"
+            echo "- **Outcome:** ${{ steps.filtered_tests.outcome }}"
+            echo "- **Artifact key:** \`${{ matrix.key }}\`"
+            echo "- **Paths:** \`${{ matrix.lesson_dir }}\` → \`${{ matrix.exercise_slug }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [[ -f reports/.last-run.ndjson ]] && [[ -s reports/.last-run.ndjson ]]; then
-            p="$(grep -c '"status":"pass"' reports/.last-run.ndjson || true)"
-            f="$(grep -c '"status":"fail"' reports/.last-run.ndjson || true)"
-            s="$(grep -c '"status":"skip"' reports/.last-run.ndjson || true)"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "**Totals this lesson:** pass \`$p\` · fail \`$f\` · skip \`$s\`" >> "$GITHUB_STEP_SUMMARY"
-          fi
 
-      - name: Propagate lesson failures
-        if: steps.lesson_run.outcome != 'success'
+      - name: Propagate test failure
+        if: steps.filtered_tests.outcome != 'success'
         run: exit 1
