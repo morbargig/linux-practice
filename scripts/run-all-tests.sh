@@ -9,6 +9,23 @@ mkdir -p reports
 NDJSON="$REPO_ROOT/reports/.last-run.ndjson"
 : >"$NDJSON"
 
+# SKIP_PROGRESS_REPORT=1 — skip generate-progress-report.sh (parallel CI shards upload NDJSON only).
+# Optional CI filters (basename of exercises/<lesson>/ only). RUN_EXERCISE_SLUG requires RUN_LESSON_DIR.
+if [[ -n "${RUN_EXERCISE_SLUG:-}" && -z "${RUN_LESSON_DIR:-}" ]]; then
+  printf '%s\n' "run-all-tests.sh: RUN_EXERCISE_SLUG requires RUN_LESSON_DIR" >&2
+  exit 2
+fi
+if [[ -n "${RUN_LESSON_DIR:-}" ]]; then
+  if [[ ! "$RUN_LESSON_DIR" =~ ^[0-9]{2}[[:space:]] ]]; then
+    printf '%s\n' "run-all-tests.sh: RUN_LESSON_DIR must match lesson folder pattern (e.g. '01 — Topic')" >&2
+    exit 2
+  fi
+  if [[ ! -d "$REPO_ROOT/exercises/$RUN_LESSON_DIR" ]]; then
+    printf '%s\n' "run-all-tests.sh: RUN_LESSON_DIR not found under exercises/: $RUN_LESSON_DIR" >&2
+    exit 2
+  fi
+fi
+
 RUN_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 STUDENT_ID="${PROGRESS_STUDENT_ID:-${GITHUB_ACTOR:-$(whoami)}}"
 
@@ -99,6 +116,7 @@ run_one_test() {
 shopt -s nullglob
 
 overall_fail=0
+filtered_exercise_hit=0
 
 for lesson_dir in "$REPO_ROOT"/exercises/*/; do
   [[ -d "$lesson_dir" ]] || continue
@@ -107,6 +125,10 @@ for lesson_dir in "$REPO_ROOT"/exercises/*/; do
   # Only lesson folders like "01 — Linux Fundamentals" (skip stray dirs such as nested copies of lab/)
   [[ "$lesson_basename" =~ ^[0-9]{2}[[:space:]] ]] || continue
 
+  if [[ -n "${RUN_LESSON_DIR:-}" && "$lesson_basename" != "$RUN_LESSON_DIR" ]]; then
+    continue
+  fi
+
   lesson_number_str="$(printf '%s' "$lesson_basename" | sed -n 's/^\([0-9]\{1,\}\).*/\1/p')"
   # Strip leading decimal digits + whitespace + UTF-8 em dash (U+2014) + whitespace
   lesson_title_trim="$(printf '%s' "$lesson_basename" | sed $'s/^[0-9]\{1,\}[[:space:]]*\xe2\x80\x94[[:space:]]*//')"
@@ -114,15 +136,27 @@ for lesson_dir in "$REPO_ROOT"/exercises/*/; do
 
   lesson_number_json=$((10#${lesson_number_str:-0}))
 
-  printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
-  printf 'Lesson %s — %s\n' "$lesson_number_str" "$lesson_title_trim"
-  printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  if [[ -z "${RUN_LESSON_DIR:-}" ]]; then
+    printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    printf 'Lesson %s — %s\n' "$lesson_number_str" "$lesson_title_trim"
+    printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  else
+    printf '\n── Filtered lesson %s — %s ──\n' "$lesson_number_str" "$lesson_title_trim"
+  fi
 
   exercise_idx=0
   for ex_dir in "${lesson_dir}"*/; do
     [[ -d "$ex_dir" ]] || continue
     exercise_slug="$(basename "$ex_dir")"
     ((exercise_idx++)) || true
+
+    if [[ -n "${RUN_EXERCISE_SLUG:-}" && "$exercise_slug" != "$RUN_EXERCISE_SLUG" ]]; then
+      continue
+    fi
+
+    if [[ -n "${RUN_EXERCISE_SLUG:-}" ]]; then
+      filtered_exercise_hit=1
+    fi
 
     if [[ ! -f "${ex_dir}test.sh" ]]; then
       printf '⚠️  [%02d] %s — missing test.sh (skipped by harness)\n' "$exercise_idx" "$exercise_slug"
@@ -143,10 +177,17 @@ for lesson_dir in "$REPO_ROOT"/exercises/*/; do
   done
 done
 
+if [[ -n "${RUN_EXERCISE_SLUG:-}" && "$filtered_exercise_hit" -eq 0 ]]; then
+  printf '%s\n' "run-all-tests.sh: RUN_EXERCISE_SLUG not found under RUN_LESSON_DIR: ${RUN_EXERCISE_SLUG}" >&2
+  exit 2
+fi
+
 printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 printf 'Totals — passed: %s  skipped: %s  failed: %s\n' "$total_pass" "$total_skip" "$total_fail"
 printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 
-bash "$REPO_ROOT/scripts/generate-progress-report.sh"
+if [[ -z "${SKIP_PROGRESS_REPORT:-}" ]]; then
+  bash "$REPO_ROOT/scripts/generate-progress-report.sh"
+fi
 
 exit "$overall_fail"

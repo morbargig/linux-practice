@@ -15,7 +15,7 @@ jq -s '
   sort_by(.lesson_number, .exercise_number)
   | . as $rows
   | ($rows[0].student_github_username // "unknown") as $stu
-  | ($rows[0].last_run_utc // "") as $ts
+  | (($rows | map(.last_run_utc // "") | map(select(length > 0)) | max // null) // ($rows[0].last_run_utc // "")) as $ts
   | ([.[] | select(.status=="pass")] | length) as $pass
   | ([.[] | select(.status=="fail")] | length) as $fail
   | ([.[] | select(.status=="skip")] | length) as $skip

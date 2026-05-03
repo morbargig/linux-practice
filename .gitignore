@@ -7,6 +7,9 @@ lab/files/tmp/awk_training_colons.txt
 lab/files/tmp/text_pipeline_sample.txt
 .DS_Store
 
+# CI workspace APT mirror (prepare_lesson cache; never commit)
+.ci-apt-archives/
+
 # Generated CI / local progress outputs (folder kept via reports/.gitkeep)
 reports/progress-report.md
 reports/progress.json

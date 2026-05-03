@@ -10,6 +10,8 @@ on:
       - "docs/**"
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
+      - ".github/workflows/exercise-lesson-suite.yml"
+      - ".github/ci-apt-packages.txt"
   pull_request:
     branches: [main, master]
     paths:
@@ -19,52 +21,110 @@ on:
       - "docs/**"
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
+      - ".github/workflows/exercise-lesson-suite.yml"
+      - ".github/ci-apt-packages.txt"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write # cache + artifacts from reusable workflow jobs / aggregate uploads
 
 jobs:
-  exercises:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Discover lessons matrix
+        id: set_matrix
+        env:
+          CI_DISCOVER_SCOPE: root_lessons
+        run: bash scripts/ci-discover-matrix.sh
+
+  # One reusable invocation per lesson (parallel across lessons). Each runs exercise-lesson-suite → exercise matrix.
+  lesson_suite:
+    name: ${{ matrix.job_title }}
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    uses: ./.github/workflows/exercise-lesson-suite.yml
+    secrets: inherit
+    with:
+      lesson_dir: ${{ matrix.lesson_dir }}
+      lesson_job_title: ${{ matrix.job_title }}
+      lesson_cache_key: ${{ matrix.key }}
+
+  aggregate_reports:
+    name: Aggregate progress reports
+    needs: lesson_suite
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Install tooling used by exercises and harness
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tree jq iproute2
-
-      - name: Prepare lab fixtures
-        run: bash scripts/setup.sh
-
-      - name: Run all exercise tests + reports
-        id: tests
-        env:
-          PROGRESS_STUDENT_ID: ${{ github.actor }}
-        run: bash scripts/run-all-tests.sh
+      # continue-on-error: shards can be delayed or absent; merge step still runs (see below).
+      - uses: actions/download-artifact@v8
+        id: download_ndjson_shards
         continue-on-error: true
+        with:
+          pattern: matrix-ndjson-*
+          merge-multiple: true
+          path: artifacts/
 
-      - name: Upload progress artifacts
-        uses: actions/upload-artifact@v4
+      - name: Merge NDJSON and generate reports
+        if: always()
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends jq
+          fi
+          mkdir -p reports
+          mapfile -t files < <(find artifacts -type f \( -name '*.ndjson' -o -name '.last-run.ndjson' \) | LC_ALL=C sort || true)
+          if ((${#files[@]} == 0)); then
+            echo "### Aggregate warning" >> "$GITHUB_STEP_SUMMARY"
+            echo "No NDJSON fragments found under \`artifacts/\` after download (expected \`*.ndjson\` shards per exercise)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat "${files[@]}" > reports/.last-run.ndjson
+          bash scripts/generate-progress-report.sh
+
+      - name: Upload combined progress artifact
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: progress-reports
           path: |
             reports/progress-report.md
             reports/progress.json
+          if-no-files-found: ignore
 
-      - name: Job summary
+      - name: Combined job summary
         if: always()
         run: |
           if [[ -f reports/progress.json ]]; then
-            echo "### Exercise CI summary" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '"**Overall:** \(.summary.passed) passed, \(.summary.failed) failed, \(.summary.skipped) skipped — **\(.summary.percent)%** graded progress"' reports/progress.json >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Download **progress-reports** artifact for Markdown + JSON." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "progress.json missing — tests may have failed before report generation." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "### Exercise CI — combined"
+              echo ""
+              jq -r '"**Overall:** \(.summary.passed) passed, \(.summary.failed) failed, \(.summary.skipped) skipped — **\(.summary.percent)%** graded progress"' reports/progress.json
+              echo ""
+              echo "Download the **progress-reports** artifact for Markdown + JSON."
+            } >> "$GITHUB_STEP_SUMMARY"
+            bash scripts/ci-append-lesson-overview-to-summary.sh reports/progress.json
           fi
 
-      - name: Enforce test failures fail the workflow
-        if: steps.tests.outcome != 'success'
-        run: exit 1
+  enforce_success:
+    name: Workflow gate
+    needs: lesson_suite
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any lesson suite or exercise cell failed
+        run: |
+          if [[ "${{ needs.lesson_suite.result }}" != "success" ]]; then
+            echo "One or more lesson suites or exercise jobs failed (result=${{ needs.lesson_suite.result }})."
+            exit 1
+          fi

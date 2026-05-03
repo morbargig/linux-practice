@@ -1,0 +1,163 @@
+name: Lesson exercise suite
+
+# Invoked once per lesson from exercise-tests.yml; runs exercise matrix jobs (parallel by default).
+on:
+  workflow_call:
+    inputs:
+      lesson_dir:
+        description: Lesson folder basename under exercises/
+        required: true
+        type: string
+      lesson_job_title:
+        description: Title for this reusable workflow run (lesson row)
+        required: true
+        type: string
+      lesson_cache_key:
+        description: Stable ASCII id for lab tarball artifact (outer matrix key, e.g. 01__lesson)
+        required: true
+        type: string
+
+run-name: "${{ inputs.lesson_job_title }}"
+
+permissions:
+  contents: read
+  actions: write # actions/cache + artifact uploads
+
+jobs:
+  # Discovery + apt + lab snapshot in one job (avoids a separate discover runner per lesson).
+  prepare_lesson:
+    name: Prepare (${{ inputs.lesson_cache_key }})
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Discover exercises for lesson
+        id: set_matrix
+        env:
+          CI_DISCOVER_SCOPE: lesson_exercises
+          CI_LESSON_DIR: ${{ inputs.lesson_dir }}
+        run: bash scripts/ci-discover-matrix.sh
+
+      - name: Restore APT deb cache (workspace mirror)
+        uses: actions/cache@v5
+        with:
+          path: .ci-apt-archives
+          key: ${{ runner.os }}-apt-archives-wsmirror-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-wsmirror-
+
+      - name: Apply cached .debs to system APT archives
+        run: |
+          sudo mkdir -p /var/cache/apt/archives
+          shopt -s nullglob
+          debs=(.ci-apt-archives/*.deb)
+          if ((${#debs[@]})); then
+            sudo rsync -a --exclude='partial/' .ci-apt-archives/ /var/cache/apt/archives/
+          fi
+
+      - name: Install tooling used by exercises and harness
+        run: |
+          sudo apt-get update -qq
+          bash scripts/ci-apt-install-packages.sh .github/ci-apt-packages.txt
+
+      - name: Refresh workspace APT mirror (for cache save)
+        run: |
+          mkdir -p .ci-apt-archives
+          sudo rsync -a --exclude='partial/' /var/cache/apt/archives/ .ci-apt-archives/
+          sudo chown -R "$USER:$USER" .ci-apt-archives
+
+      - name: Run setup.sh once for this lesson
+        run: bash scripts/setup.sh
+
+      - name: Pack lab snapshot
+        run: tar czf lesson-lab.tgz lab/
+
+      - name: Pack APT snapshot (archives + lists for exercise jobs)
+        run: |
+          set -euo pipefail
+          sudo tar czf - \
+            --exclude='var/cache/apt/archives/partial' \
+            -C / var/cache/apt/archives var/lib/apt/lists > ci-apt-snapshot.tgz
+          [[ -s ci-apt-snapshot.tgz ]]
+
+      # Internal-only bundle (~60MB): lab tarball + APT snapshot for exercise runners — NOT grading reports.
+      - name: Upload CI lesson bundle (lab + APT snapshot)
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-lesson-bundle-${{ inputs.lesson_cache_key }}
+          path: |
+            lesson-lab.tgz
+            ci-apt-snapshot.tgz
+          retention-days: 3
+
+  test_exercises:
+    name: ${{ matrix.job_title }}
+    needs: prepare_lesson
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare_lesson.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download CI lesson bundle from prepare_lesson
+        uses: actions/download-artifact@v8
+        with:
+          name: ci-lesson-bundle-${{ inputs.lesson_cache_key }}
+          path: downloaded/
+
+      - name: Restore APT snapshot (skip apt-get update on fresh runners)
+        run: sudo tar xzf downloaded/ci-apt-snapshot.tgz -C /
+
+      - name: Install tooling from snapshot lists/archives
+        run: bash scripts/ci-apt-install-packages.sh .github/ci-apt-packages.txt
+
+      - name: Restore lab snapshot (same baseline as prepare_lesson)
+        run: |
+          rm -rf lab
+          tar xzf downloaded/lesson-lab.tgz
+
+      - name: Run exercise tests (filtered)
+        id: filtered_tests
+        env:
+          PROGRESS_STUDENT_ID: ${{ github.actor }}
+          RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
+          RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
+          SKIP_PROGRESS_REPORT: "1"
+        run: bash scripts/run-all-tests.sh
+        continue-on-error: true
+
+      # Unique basename per shard so aggregate merge-multiple does not overwrite the same path.
+      - name: Stage NDJSON shard for upload
+        if: always()
+        run: |
+          mkdir -p reports/ci-shards
+          key="${{ matrix.key }}"
+          if [[ -f reports/.last-run.ndjson ]] && [[ -s reports/.last-run.ndjson ]]; then
+            cp reports/.last-run.ndjson "reports/ci-shards/${key}.ndjson"
+          fi
+
+      - name: Upload NDJSON fragment
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: matrix-ndjson-${{ matrix.key }}
+          path: reports/ci-shards/${{ matrix.key }}.ndjson
+          if-no-files-found: ignore
+
+      - name: Cell summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.job_title }}"
+            echo ""
+            echo "- **Outcome:** ${{ steps.filtered_tests.outcome }}"
+            echo "- **Artifact key:** \`${{ matrix.key }}\`"
+            echo "- **Paths:** \`${{ matrix.lesson_dir }}\` → \`${{ matrix.exercise_slug }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Propagate test failure
+        if: steps.filtered_tests.outcome != 'success'
+        run: exit 1
