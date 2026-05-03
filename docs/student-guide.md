@@ -21,6 +21,8 @@ macOS can run many scripts, but tools and paths differ (`ip` vs `ifconfig`, BSD 
   - Debian/Ubuntu: `sudo apt install jq tree`
   - macOS (Homebrew): `brew install jq` (install `tree` if an exercise asks for it)
 
+- The exercise scripts use paths like `../../lab/files`. In this repository, [`exercises/lab`](exercises/lab) is a **symlink** to the top-level [`lab/`](lab/) directory so those relative paths resolve correctly from each exercise folder. On Windows, enable symlink creation before cloning if needed (`git config --global core.symlinks true`), then clone again.
+
 ## Local workflow
 
 1. **Clone your fork** (or the class template) and enter the repo root.
