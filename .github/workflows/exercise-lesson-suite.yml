@@ -1,6 +1,6 @@
 name: Lesson exercise suite
 
-# One runner per lesson: installs deps once, runs exercises sequentially, merges NDJSON for aggregation.
+# Invoked once per lesson from exercise-tests.yml — single runner runs exercises in order.
 on:
   workflow_call:
     inputs:
@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       lesson_matrix_key:
-        description: Stable key from root discovery (artifact prefix), e.g. 01__lesson
+        description: Stable key for NDJSON artifact (e.g. 01__lesson)
         required: true
         type: string
 
@@ -24,7 +24,7 @@ permissions:
   actions: write # actions/cache save/restore for APT archives
 
 jobs:
-  exercises_for_lesson:
+  run_lesson_ordered:
     name: ${{ inputs.lesson_job_title }}
     runs-on: ubuntu-latest
     steps:
@@ -46,15 +46,14 @@ jobs:
       - name: Prepare lab fixtures
         run: bash scripts/setup.sh
 
-      - name: Run all exercises in lesson order (single runner)
+      - name: Run exercises in order (single runner)
         id: lesson_run
         env:
-          PROGRESS_STUDENT_ID: ${{ github.actor }}
           LESSON_DIR: ${{ inputs.lesson_dir }}
-        run: bash scripts/ci-run-lesson-exercises.sh
-        continue-on-error: true
+          PROGRESS_STUDENT_ID: ${{ github.actor }}
+        run: bash scripts/ci-run-lesson-exercises-on-runner.sh
 
-      - name: Upload NDJSON fragment for lesson
+      - name: Upload lesson NDJSON bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -68,13 +67,17 @@ jobs:
           {
             echo "### ${{ inputs.lesson_job_title }}"
             echo ""
-            echo "- **Runner:** single VM — apt + \`setup.sh\` once; exercises run **sequentially** (\`ci-run-lesson-exercises.sh\`)."
-            echo "- **Outcome:** ${{ steps.lesson_run.outcome }}"
-            if [[ -f reports/.last-run.ndjson ]]; then
-              echo "- **NDJSON lines:** $(wc -l < reports/.last-run.ndjson)"
-            fi
+            echo "- **Runner:** single VM; exercises executed **sequentially** in slug order."
+            echo "- **Step outcome:** ${{ steps.lesson_run.outcome }}"
           } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f reports/.last-run.ndjson ]] && [[ -s reports/.last-run.ndjson ]]; then
+            p="$(grep -c '"status":"pass"' reports/.last-run.ndjson || true)"
+            f="$(grep -c '"status":"fail"' reports/.last-run.ndjson || true)"
+            s="$(grep -c '"status":"skip"' reports/.last-run.ndjson || true)"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Totals this lesson:** pass \`$p\` · fail \`$f\` · skip \`$s\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-      - name: Propagate failures
+      - name: Propagate lesson failures
         if: steps.lesson_run.outcome != 'success'
         run: exit 1
