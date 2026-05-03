@@ -2,6 +2,8 @@
 
 This repository is a hands-on practice project for Linux scripting fundamentals organized into progressive lessons:
 
+**Environment:** Automated grading runs on **Ubuntu** (GitHub Actions). For the smoothest experience, use **Ubuntu natively, WSL2 (Ubuntu), or an Ubuntu VM** so your results match CI. See [docs/student-guide.md](docs/student-guide.md).
+
 **Lesson 01** - Linux Fundamentals: Tools, scripts, find, loops, conditions, debugging  
 **Lesson 02** - Bash, Find, Loops & Scripting: File operations, text processing, variables, functions, error handling  
 **Lesson 03** - Users, Groups & Environments: User management, groups, sudo, environment variables  
@@ -80,12 +82,17 @@ cd linux-practice-find-loops
 
 4) Check your work
 ```bash
-# Basic structure check
+# Basic structure check (placeholders & layout — not the full grader)
 ./scripts/check.sh
 
-# Run automated tests (requires secret file from instructor)
-./tests/run_tests.sh
+# Full exercise grading (every exercise/*/test.sh)
+# Requires jq (same as CI). Generates reports/progress-report.md + progress.json
+./scripts/run-all-tests.sh
 ```
+
+**CI:** pushes and pull requests run [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) on Ubuntu (installs `tree` + `jq`, runs `setup.sh`, then the harness). Download the **`progress-reports`** artifact from the Actions run for Markdown/JSON suitable for instructors.
+
+**Guides:** [Student: run tests & submit](docs/student-guide.md) · [Teacher: read reports & add exercises](docs/teacher-guide.md)
 
 ## Rules
 - Do not delete the TODO comments
@@ -93,7 +100,8 @@ cd linux-practice-find-loops
 - Output format matters (checker expects specific lines)
 
 ## Folder Guide
-- `scripts/` : setup/reset/check tools
+- `scripts/` : setup/reset/check tools + exercise harness (`run-all-tests.sh`)
+- `docs/`    : student & teacher guides for testing and grading
 - `lab/`     : generated practice files (safe sandbox)
 - `exercises/`: lessons organized by topic
   - `01 — Linux Fundamentals/`: Basic bash scripting (10 exercises)

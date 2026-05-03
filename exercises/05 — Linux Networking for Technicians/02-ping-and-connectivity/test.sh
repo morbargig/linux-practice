@@ -1,42 +1,37 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
+: "${REPO_ROOT:?}"
+# shellcheck source=scripts/test-lib.sh
+source "$REPO_ROOT/scripts/test-lib.sh"
 
-pass() {
-  printf 'PASS: %s\n' "$*"
-}
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$here"
 
-warn() {
-  printf 'WARN: %s\n' "$*"
-}
-
-fail() {
-  printf 'FAIL: %s\n' "$*"
-}
-
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-out=""
-if [[ -x "${script_dir}/task.sh" ]]; then
-  out="$("${script_dir}/task.sh" 2>&1)" || true
-else
-  fail "task.sh missing or not executable"
+[[ -f ./task.sh ]] || {
+  emit_result fail "task.sh missing"
   exit 1
-fi
+}
+
+check_no_placeholders ./task.sh
+
+bash_syntax_ok ./task.sh || {
+  emit_result fail "bash -n reports syntax errors in task.sh"
+  exit 1
+}
+
+set +e
+out="$(bash ./task.sh 2>&1)"
+set -e
 
 ok=1
-if ! printf '%s' "$out" | grep -qF '127.0.0.1'; then
-  ok=0
-fi
-if ! printf '%s' "$out" | grep -qF '8.8.8.8'; then
-  ok=0
-fi
-if ! printf '%s' "$out" | grep -qF 'google.com'; then
-  ok=0
-fi
+printf '%s' "$out" | grep -qF '127.0.0.1' || ok=0
+printf '%s' "$out" | grep -qF '8.8.8.8' || ok=0
+printf '%s' "$out" | grep -qF 'google.com' || ok=0
 
 if [[ "$ok" -eq 1 ]]; then
-  pass "task output includes localhost, 8.8.8.8, and google.com checks"
+  emit_result pass "task output includes localhost, 8.8.8.8, and google.com checks"
   exit 0
 fi
 
-warn "task output missing one of: 127.0.0.1, 8.8.8.8, google.com"
-exit 0
+emit_result fail "task output must mention 127.0.0.1, 8.8.8.8, and google.com"
+exit 1

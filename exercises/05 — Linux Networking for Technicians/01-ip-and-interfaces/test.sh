@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
+: "${REPO_ROOT:?}"
+# shellcheck source=scripts/test-lib.sh
+source "$REPO_ROOT/scripts/test-lib.sh"
 
-pass() {
-  printf 'PASS: %s\n' "$*"
-}
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$here"
 
-warn() {
-  printf 'WARN: %s\n' "$*"
-}
-
-fail() {
-  printf 'FAIL: %s\n' "$*"
-}
-
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-out=""
-if [[ -x "${script_dir}/task.sh" ]]; then
-  out="$("${script_dir}/task.sh" 2>&1)" || true
-else
-  fail "task.sh missing or not executable"
+[[ -f ./task.sh ]] || {
+  emit_result fail "task.sh missing"
   exit 1
-fi
+}
+
+check_no_placeholders ./task.sh
+
+bash_syntax_ok ./task.sh || {
+  emit_result fail "bash -n reports syntax errors in task.sh"
+  exit 1
+}
+
+set +e
+out="$(bash ./task.sh 2>&1)"
+set -e
 
 lc_out="$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')"
 
@@ -44,24 +45,14 @@ if printf '%s' "$lc_out" | grep -qE 'interface|inet |link/ether|^[0-9]+:|lo:|eth
 fi
 
 if [[ "$ok_host" -eq 1 && "$ok_ip" -eq 1 && "$ok_iface" -eq 1 ]]; then
-  pass "task output mentions hostname, IP/IPv4, and interface details"
+  emit_result pass "task output mentions hostname, IP/IPv4, and interface details"
   exit 0
-fi
-
-if [[ "$ok_host" -eq 0 ]]; then
-  warn "Could not confirm hostname in output"
-fi
-if [[ "$ok_ip" -eq 0 ]]; then
-  warn "Could not confirm IP/IPv4 information in output"
-fi
-if [[ "$ok_iface" -eq 0 ]]; then
-  warn "Could not confirm interface details in output"
 fi
 
 if [[ "$ok_host" -eq 1 || "$ok_ip" -eq 1 || "$ok_iface" -eq 1 ]]; then
-  warn "Partial match only — improve task.sh output"
-  exit 0
+  emit_result fail "partial output — include hostname, IPv4/IP usage, and interface details"
+  exit 1
 fi
 
-fail "task output missing expected hostname, IP, and interface clues"
+emit_result fail "task output missing hostname, IP/IPv4, and interface clues"
 exit 1

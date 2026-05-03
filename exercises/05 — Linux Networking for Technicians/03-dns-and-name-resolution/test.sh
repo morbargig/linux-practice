@@ -1,64 +1,45 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
+: "${REPO_ROOT:?}"
+# shellcheck source=scripts/test-lib.sh
+source "$REPO_ROOT/scripts/test-lib.sh"
 
-pass() {
-  printf 'PASS: %s\n' "$*"
-}
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$here"
 
-warn() {
-  printf 'WARN: %s\n' "$*"
-}
-
-fail() {
-  printf 'FAIL: %s\n' "$*"
-}
-
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-out=""
-if [[ -x "${script_dir}/task.sh" ]]; then
-  out="$("${script_dir}/task.sh" 2>&1)" || true
-else
-  fail "task.sh missing or not executable"
+[[ -f ./task.sh ]] || {
+  emit_result fail "task.sh missing"
   exit 1
-fi
+}
+
+check_no_placeholders ./task.sh
+
+bash_syntax_ok ./task.sh || {
+  emit_result fail "bash -n reports syntax errors in task.sh"
+  exit 1
+}
+
+set +e
+out="$(bash ./task.sh 2>&1)"
+set -e
 
 lc_out="$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')"
 
 ok_dns=0
-if printf '%s' "$lc_out" | grep -qE 'dns|nameserver'; then
-  ok_dns=1
-fi
+printf '%s' "$lc_out" | grep -qE 'dns|nameserver' && ok_dns=1
 
 ok_google=0
-if printf '%s' "$out" | grep -qF 'google.com'; then
-  ok_google=1
-fi
+printf '%s' "$out" | grep -qF 'google.com' && ok_google=1
 
 ok_tool=0
-if printf '%s' "$lc_out" | grep -q 'nslookup'; then
-  ok_tool=1
-fi
-if printf '%s' "$lc_out" | grep -q 'dig '; then
-  ok_tool=1
-fi
-if printf '%s' "$lc_out" | grep -q 'resolv.conf'; then
-  ok_tool=1
-fi
+printf '%s' "$lc_out" | grep -q 'nslookup' && ok_tool=1
+printf '%s' "$lc_out" | grep -q 'dig ' && ok_tool=1
+printf '%s' "$lc_out" | grep -q 'resolv.conf' && ok_tool=1
 
 if [[ "$ok_dns" -eq 1 && "$ok_google" -eq 1 && "$ok_tool" -eq 1 ]]; then
-  pass "output references DNS/nameserver, google.com, and nslookup/dig/resolv.conf"
+  emit_result pass "DNS/nameserver, google.com, and nslookup/dig/resolv.conf referenced"
   exit 0
 fi
 
-if [[ "$ok_dns" -eq 0 ]]; then
-  warn "expected DNS or nameserver mention"
-fi
-if [[ "$ok_google" -eq 0 ]]; then
-  warn "expected google.com in output"
-fi
-if [[ "$ok_tool" -eq 0 ]]; then
-  warn "expected nslookup, dig, or resolv.conf in output"
-fi
-
-fail "improve task.sh so output is easier to verify"
+emit_result fail "Expected DNS/nameserver hints, google.com, and nslookup or dig or /etc/resolv.conf"
 exit 1

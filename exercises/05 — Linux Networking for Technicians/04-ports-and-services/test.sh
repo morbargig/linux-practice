@@ -1,67 +1,58 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
+: "${REPO_ROOT:?}"
+# shellcheck source=scripts/test-lib.sh
+source "$REPO_ROOT/scripts/test-lib.sh"
 
-pass() {
-  printf 'PASS: %s\n' "$*"
-}
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$here"
 
-warn() {
-  printf 'WARN: %s\n' "$*"
-}
-
-fail() {
-  printf 'FAIL: %s\n' "$*"
-}
-
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-out=""
-if [[ -x "${script_dir}/task.sh" ]]; then
-  out="$("${script_dir}/task.sh" 2>&1)" || true
-else
-  fail "task.sh missing or not executable"
+[[ -f ./task.sh ]] || {
+  emit_result fail "task.sh missing"
   exit 1
-fi
+}
+
+check_no_placeholders ./task.sh
+
+bash_syntax_ok ./task.sh || {
+  emit_result fail "bash -n reports syntax errors in task.sh"
+  exit 1
+}
+
+set +e
+out="$(bash ./task.sh 2>&1)"
+set -e
 
 lc_out="$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')"
 
-if ! printf '%s' "$out" | grep -qF '8080'; then
-  fail "task output should mention port 8080"
+printf '%s' "$out" | grep -qF '8080' || {
+  emit_result fail "task output should mention port 8080"
   exit 1
-fi
+}
 
 ok_listen_hint=0
-if printf '%s' "$lc_out" | grep -q 'listening'; then
-  ok_listen_hint=1
-fi
-if printf '%s' "$lc_out" | grep -q 'not listening'; then
-  ok_listen_hint=1
-fi
+printf '%s' "$lc_out" | grep -q 'listening' && ok_listen_hint=1
+printf '%s' "$lc_out" | grep -q 'not listening' && ok_listen_hint=1
 
 ok_local=0
-if printf '%s' "$lc_out" | grep -q 'localhost'; then
-  ok_local=1
-fi
-if printf '%s' "$out" | grep -q '127.0.0.1'; then
-  ok_local=1
-fi
-if printf '%s' "$lc_out" | grep -q 'curl'; then
-  ok_local=1
-fi
+printf '%s' "$lc_out" | grep -q 'localhost' && ok_local=1
+printf '%s' "$out" | grep -qF '127.0.0.1' && ok_local=1
+printf '%s' "$lc_out" | grep -q 'curl' && ok_local=1
 
-if [[ "$ok_listen_hint" -eq 0 ]]; then
-  fail "expected listening or not listening in output"
+[[ "$ok_listen_hint" -eq 1 ]] || {
+  emit_result fail "expected listening or not listening in output"
   exit 1
-fi
+}
 
-if [[ "$ok_local" -eq 0 ]]; then
-  fail "expected localhost, 127.0.0.1, or curl in output"
+[[ "$ok_local" -eq 1 ]] || {
+  emit_result fail "expected localhost, 127.0.0.1, or curl in output"
   exit 1
-fi
+}
 
 if printf '%s' "$lc_out" | grep -q 'not listening'; then
-  warn "8080 not listening — start python3 -m http.server 8080 to see a full success path"
+  emit_result pass "Structural checks OK (8080 not listening — optional server per README)"
   exit 0
 fi
 
-pass "task output covers 8080, listen state, and localhost/curl"
+emit_result pass "task output covers 8080, listen state, and localhost/curl"
 exit 0

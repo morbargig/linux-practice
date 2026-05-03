@@ -1,0 +1,70 @@
+name: Exercise tests
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "exercises/**"
+      - "scripts/**"
+      - "lab/**"
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/exercise-tests.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "exercises/**"
+      - "scripts/**"
+      - "lab/**"
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/exercise-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  exercises:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling used by exercises and harness
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tree jq iproute2
+
+      - name: Prepare lab fixtures
+        run: bash scripts/setup.sh
+
+      - name: Run all exercise tests + reports
+        id: tests
+        env:
+          PROGRESS_STUDENT_ID: ${{ github.actor }}
+        run: bash scripts/run-all-tests.sh
+        continue-on-error: true
+
+      - name: Upload progress artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: progress-reports
+          path: |
+            reports/progress-report.md
+            reports/progress.json
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [[ -f reports/progress.json ]]; then
+            echo "### Exercise CI summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '"**Overall:** \(.summary.passed) passed, \(.summary.failed) failed, \(.summary.skipped) skipped — **\(.summary.percent)%** graded progress"' reports/progress.json >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Download **progress-reports** artifact for Markdown + JSON." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "progress.json missing — tests may have failed before report generation." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Enforce test failures fail the workflow
+        if: steps.tests.outcome != 'success'
+        run: exit 1

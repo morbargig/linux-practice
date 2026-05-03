@@ -1,2 +1,7 @@
 lab/output/
 .DS_Store
+
+# Generated CI / local progress outputs (folder kept via reports/.gitkeep)
+reports/progress-report.md
+reports/progress.json
+reports/.last-run.ndjson

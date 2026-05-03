@@ -1,36 +1,37 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
+: "${REPO_ROOT:?}"
+# shellcheck source=scripts/test-lib.sh
+source "$REPO_ROOT/scripts/test-lib.sh"
 
-pass() {
-  printf 'PASS: %s\n' "$*"
-}
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$here"
 
-warn() {
-  printf 'WARN: %s\n' "$*"
-}
-
-fail() {
-  printf 'FAIL: %s\n' "$*"
-}
-
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-out=""
-if [[ -x "${script_dir}/task.sh" ]]; then
-  out="$("${script_dir}/task.sh" 2>&1)" || true
-else
-  fail "task.sh missing or not executable"
+[[ -f ./task.sh ]] || {
+  emit_result fail "task.sh missing"
   exit 1
-fi
+}
+
+check_no_placeholders ./task.sh
+
+bash_syntax_ok ./task.sh || {
+  emit_result fail "bash -n reports syntax errors in task.sh"
+  exit 1
+}
+
+set +e
+out="$(bash ./task.sh 2>&1)"
+set -e
 
 lc_out="$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')"
 
-need=( "ip information" "routing" "connectivity" "dns" "likely" )
+need=("ip information" "routing" "connectivity" "dns" "likely")
 for key in "${need[@]}"; do
   if ! printf '%s' "$lc_out" | grep -qF "$key"; then
-    fail "expected section heading containing: ${key}"
+    emit_result fail "Expected section heading containing: ${key}"
     exit 1
   fi
 done
 
-pass "report contains IP, Routing, Connectivity, DNS, and Likely sections"
+emit_result pass "Report contains IP, Routing, Connectivity, DNS, and Likely sections"
 exit 0
