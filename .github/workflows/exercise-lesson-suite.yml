@@ -44,9 +44,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends tree jq iproute2
 
-      - name: Prepare lab fixtures
-        run: bash scripts/setup.sh
-
       - name: Run all exercises for lesson (ordered, one VM)
         id: batch
         continue-on-error: true
@@ -68,7 +65,7 @@ jobs:
           {
             echo "### ${{ inputs.lesson_job_title }}"
             echo ""
-            echo "- **Mode:** all exercises for this lesson on **one runner** (single \`setup.sh\`, ordered batch)."
+            echo "- **Mode:** **one runner** per lesson — \`setup.sh\` before each exercise, ordered batch, **stop at first failing exercise**."
             echo "- **Artifact:** \`matrix-ndjson-${{ inputs.lesson_key }}\`"
             echo "- **Outcome:** ${{ steps.batch.outcome }}"
           } >> "$GITHUB_STEP_SUMMARY"
