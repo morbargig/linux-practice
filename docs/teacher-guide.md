@@ -74,47 +74,15 @@ Adjust the corresponding `test.sh` if your class policy differs.
 - **`main`** is the **unresolved** student template (TODOs / `_____` placeholders). Learners fork or clone from **`main`**; CI on **`main`** is expected to fail until work is finished (aside from deliberate **skip** tests).
 - **Do not merge** reference or solution branches into **`main`** for repos handed to students. Keep worked answers on a **separate branch or private fork**, rebasing onto **`main`** whenever the template changes—same pattern as an instructor-only “always-green baseline” branch mentioned under Troubleshooting.
 
-## CI matrix (GitHub Actions)
+## CI (GitHub Actions)
 
-CI uses **two workflow layers** so each lesson splits into **ordered exercise jobs** (GitHub cannot nest matrices in one file; this uses a **caller + reusable workflow**).
+[`exercise-tests.yml`](../.github/workflows/exercise-tests.yml) uses **one Ubuntu job** for speed: single checkout, [**APT archive cache**](../.github/ci-apt-packages.txt) (`tree`, `jq`, `iproute2`), **`scripts/setup.sh`**, then **`bash scripts/run-all-tests.sh`** over the **entire** lesson tree (same as a full local run). That avoids spawning a fresh runner per lesson or exercise.
 
-| Workflow | Role |
-| --- | --- |
-| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) that calls **`exercise-lesson-suite.yml`** once per lesson with **`lesson_dir`** / **`lesson_job_title`**. **`aggregate_reports`** downloads **`matrix-ndjson-*`** from the whole run, merges NDJSON, builds **`progress-reports`**. **`enforce_success`** gates on **`lesson_suite`**. |
-| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`discover_exercises`** — same script with **`CI_DISCOVER_SCOPE=lesson_exercises`** and **`CI_LESSON_DIR`** = that lesson basename; emits rows for sorted exercise folders only. **`test_exercises`** — inner matrix (`max-parallel: 1`), filtered **`run-all-tests.sh`** per row, uploads **`matrix-ndjson-<key>`** fragments (stable ids such as `02__03-find`). |
+The workflow uploads **`progress-reports`** (`progress-report.md`, `progress.json`), prints a job summary with totals and **By lesson** tables ([`scripts/ci-append-lesson-overview-to-summary.sh`](../scripts/ci-append-lesson-overview-to-summary.sh)), and fails the job if the harness exits non-zero.
 
-```mermaid
-flowchart LR
-  discoverRoot[discover_root_lessons]
-  lessonWave[lesson_suite_per_lesson]
-  reusableRun[exercise_lesson_suite]
-  exercisesInner[test_exercises_matrix]
-  discoverRoot --> lessonWave
-  lessonWave --> reusableRun
-  reusableRun --> exercisesInner
-```
+**Maintainers:** [`scripts/ci_discover_matrix.py`](../scripts/ci_discover_matrix.py) remains useful **locally** to inspect matrix JSON (`CI_DISCOVER_SCOPE=root_lessons` or `lesson_exercises` + `CI_LESSON_DIR`); Actions no longer consumes it.
 
-**Presentation**
-
-- Root **`lesson_suite`** uses **`job_title`** ending with **`· all exercises`** (lesson wave).
-- Inner **`test_exercises`** uses **`›`** plus the exercise folder name after the trimmed lesson title (same **`job_title`** rules as before).
-- **`key`** is ASCII-safe for artifact names only (`matrix-ndjson-…`).
-
-**Concurrency**
-
-- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
-- Inside each suite, only **one exercise job runs at a time** (**`test_exercises`** **`max-parallel: 1`**).
-
-Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
-
-**Discovery env**
-
-| Scope | Variables | Matrix rows |
-| --- | --- | --- |
-| Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | One per lesson folder |
-| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise subfolder under that lesson |
-
-**Local filtered run** (matches each inner exercise cell):
+**Local filtered run** (single lesson/exercise):
 
 ```bash
 RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh
@@ -139,7 +107,7 @@ Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
    bash scripts/run-all-tests.sh
    ```
 
-5. Commit and push; **Exercise tests** runs automatically when `exercises/**`, `scripts/**`, or the workflow changes. CI discovers lessons/exercises dynamically (see **CI matrix** above).
+5. Commit and push; **Exercise tests** runs automatically when `exercises/**`, `scripts/**`, or the workflow changes (see **CI (GitHub Actions)** above).
 
 ## Troubleshooting
 
