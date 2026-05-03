@@ -81,14 +81,19 @@ The **Exercise tests** workflow (`.github/workflows/exercise-tests.yml`) is spli
 | Job | Role |
 | --- | --- |
 | **discover** | Runs [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) (Python helper) to scan `exercises/` with the **same** lesson naming rule as [`scripts/run-all-tests.sh`](scripts/run-all-tests.sh) (`^[0-9]{2}[[:space:]]`…). Writes a dynamic `matrix` output—**no workflow edits** when you add lessons or exercise folders. |
-| **test_matrix** | Parallel Ubuntu jobs (`fail-fast: false`). Each cell sets **`RUN_LESSON_DIR`** and, in *exercise* mode, **`RUN_EXERCISE_SLUG`**, then runs `bash scripts/run-all-tests.sh`. Job display names use short keys (`01__lesson`, `04__09-awk-report`, …). |
-| **aggregate_reports** | Downloads all `matrix-ndjson-*` fragments, merges `.last-run.ndjson` lines, runs [`scripts/generate-progress-report.sh`](scripts/generate-progress-report.sh), uploads the combined **`progress-reports`** artifact, and prints a combined job summary. |
+| **test_matrix** | Parallel Ubuntu jobs (`fail-fast: false`). Each cell sets **`RUN_LESSON_DIR`** and, in *exercise* mode, **`RUN_EXERCISE_SLUG`**, then runs `bash scripts/run-all-tests.sh`. **Job names** use **`job_title`** (readable *lesson → exercise*, e.g. `02 · Bash, Find, Loops & Scripting › 05-piping-redirection`). **`key`** is a short ASCII id used only for NDJSON artifact names (`matrix-ndjson-…`). |
+| **aggregate_reports** | Downloads all `matrix-ndjson-*` fragments, merges `.last-run.ndjson` lines, runs [`scripts/generate-progress-report.sh`](scripts/generate-progress-report.sh), uploads **`progress-reports`**, prints a combined summary, and appends **By lesson** tables via [`scripts/ci-append-lesson-overview-to-summary.sh`](scripts/ci-append-lesson-overview-to-summary.sh). |
 | **enforce_success** | Fails the workflow if **any** matrix cell failed (aggregate still runs via `if: always()` so you keep partial reports). |
+
+**Presentation**
+
+- Jobs sort naturally by lesson number at the start of **`job_title`** (`02 · …` before `03 · …`).
+- **Lesson** mode ends titles with **`· all exercises`**; **exercise** mode adds **`›`** and the exercise folder name after the trimmed lesson title (derived from the lesson folder name; very long titles are shortened).
 
 **Granularity**
 
 - **Push / pull_request** runs default to **`lesson`** (one parallel job per lesson folder; fewer billed minutes).
-- **workflow_dispatch → Run workflow** offers **granularity** `lesson` or **`exercise`** (one job per exercise subfolder; more granular UI, higher total minutes because each cell repeats checkout + apt + `setup.sh`).
+- **workflow_dispatch → Run workflow** offers **`lesson`** or **`exercise`** (one job per exercise folder for the clearest lesson → exercise map; higher total minutes per run).
 
 Parallel runners each have an **isolated** workspace, so concurrent `lab/` writes do not clash.
 

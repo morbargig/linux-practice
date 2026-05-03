@@ -48,7 +48,7 @@ jobs:
         run: bash scripts/ci-discover-matrix.sh
 
   test_matrix:
-    name: ${{ matrix.key }}
+    name: ${{ matrix.job_title }}
     needs: discover
     runs-on: ubuntu-latest
     strategy:
@@ -86,11 +86,11 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Matrix cell \`${{ matrix.key }}\`"
+            echo "### ${{ matrix.job_title }}"
             echo ""
-            echo "- **Lesson dir:** \`${{ matrix.lesson_dir }}\`"
-            echo "- **Exercise slug:** \`${{ matrix.exercise_slug }}\` (empty = whole lesson)"
-            echo "- **Outcome:** \`${{ steps.filtered_tests.outcome }}\`"
+            echo "- **Outcome:** ${{ steps.filtered_tests.outcome }}"
+            echo "- **Artifact key:** \`${{ matrix.key }}\` (NDJSON fragment name)"
+            echo "- **Paths:** \`${{ matrix.lesson_dir }}\` → \`${{ matrix.exercise_slug }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Propagate test failure
@@ -147,6 +147,7 @@ jobs:
               echo ""
               echo "Download the **progress-reports** artifact for Markdown + JSON."
             } >> "$GITHUB_STEP_SUMMARY"
+            bash scripts/ci-append-lesson-overview-to-summary.sh reports/progress.json
           fi
 
   enforce_success:
