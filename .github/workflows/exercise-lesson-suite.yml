@@ -1,0 +1,85 @@
+name: Lesson exercise suite
+
+# Invoked once per lesson from exercise-tests.yml; runs an ordered matrix of exercises.
+on:
+  workflow_call:
+    inputs:
+      lesson_dir:
+        description: Lesson folder basename under exercises/
+        required: true
+        type: string
+      lesson_job_title:
+        description: Title for this reusable workflow run (lesson row)
+        required: true
+        type: string
+
+run-name: "${{ inputs.lesson_job_title }}"
+
+permissions:
+  contents: read
+
+jobs:
+  discover_exercises:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Discover exercises for lesson
+        id: set_matrix
+        env:
+          CI_DISCOVER_SCOPE: lesson_exercises
+          CI_LESSON_DIR: ${{ inputs.lesson_dir }}
+        run: bash scripts/ci-discover-matrix.sh
+
+  test_exercises:
+    name: ${{ matrix.job_title }}
+    needs: discover_exercises
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.discover_exercises.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling used by exercises and harness
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tree jq iproute2
+
+      - name: Prepare lab fixtures
+        run: bash scripts/setup.sh
+
+      - name: Run exercise tests (filtered)
+        id: filtered_tests
+        env:
+          PROGRESS_STUDENT_ID: ${{ github.actor }}
+          RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
+          RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
+        run: bash scripts/run-all-tests.sh
+        continue-on-error: true
+
+      - name: Upload NDJSON fragment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-ndjson-${{ matrix.key }}
+          path: reports/.last-run.ndjson
+          if-no-files-found: ignore
+
+      - name: Cell summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.job_title }}"
+            echo ""
+            echo "- **Outcome:** ${{ steps.filtered_tests.outcome }}"
+            echo "- **Artifact key:** \`${{ matrix.key }}\`"
+            echo "- **Paths:** \`${{ matrix.lesson_dir }}\` → \`${{ matrix.exercise_slug }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Propagate test failure
+        if: steps.filtered_tests.outcome != 'success'
+        run: exit 1

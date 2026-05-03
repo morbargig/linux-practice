@@ -76,28 +76,45 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 ## CI matrix (GitHub Actions)
 
-The **Exercise tests** workflow (`.github/workflows/exercise-tests.yml`) is split for a clear Actions UI:
+CI uses **two workflow layers** so each lesson splits into **ordered exercise jobs** (GitHub cannot nest matrices in one file; this uses a **caller + reusable workflow**).
 
-| Job | Role |
+| Workflow | Role |
 | --- | --- |
-| **discover** | Runs [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) (Python helper) to scan `exercises/` with the **same** lesson naming rule as [`scripts/run-all-tests.sh`](scripts/run-all-tests.sh) (`^[0-9]{2}[[:space:]]`…). Writes a dynamic `matrix` output—**no workflow edits** when you add lessons or exercise folders. |
-| **test_matrix** | Ubuntu matrix jobs with **`max-parallel: 1`** so only **one cell runs at a time**, roughly following discovery order (sorted lesson folders, then sorted exercise folders). `fail-fast: false` still runs remaining cells after a failure. Each cell sets **`RUN_LESSON_DIR`** and, in *exercise* mode, **`RUN_EXERCISE_SLUG`**, then runs `bash scripts/run-all-tests.sh`. **Job names** use **`job_title`** (readable *lesson → exercise*). **`key`** is a short ASCII id for NDJSON artifact names (`matrix-ndjson-…`). |
-| **aggregate_reports** | Downloads all `matrix-ndjson-*` fragments, merges `.last-run.ndjson` lines, runs [`scripts/generate-progress-report.sh`](scripts/generate-progress-report.sh), uploads **`progress-reports`**, prints a combined summary, and appends **By lesson** tables via [`scripts/ci-append-lesson-overview-to-summary.sh`](scripts/ci-append-lesson-overview-to-summary.sh). |
-| **enforce_success** | Fails the workflow if **any** matrix cell failed (aggregate still runs via `if: always()` so you keep partial reports). |
+| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) that calls **`exercise-lesson-suite.yml`** once per lesson with **`lesson_dir`** / **`lesson_job_title`**. **`aggregate_reports`** downloads **`matrix-ndjson-*`** from the whole run, merges NDJSON, builds **`progress-reports`**. **`enforce_success`** gates on **`lesson_suite`**. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`discover_exercises`** — same script with **`CI_DISCOVER_SCOPE=lesson_exercises`** and **`CI_LESSON_DIR`** = that lesson basename; emits rows for sorted exercise folders only. **`test_exercises`** — inner matrix (`max-parallel: 1`), filtered **`run-all-tests.sh`** per row, uploads **`matrix-ndjson-<key>`** fragments (stable ids such as `02__03-find`). |
+
+```mermaid
+flowchart LR
+  discoverRoot[discover_root_lessons]
+  lessonWave[lesson_suite_per_lesson]
+  reusableRun[exercise_lesson_suite]
+  exercisesInner[test_exercises_matrix]
+  discoverRoot --> lessonWave
+  lessonWave --> reusableRun
+  reusableRun --> exercisesInner
+```
 
 **Presentation**
 
-- Jobs sort naturally by lesson number at the start of **`job_title`** (`02 · …` before `03 · …`).
-- **Lesson** mode ends titles with **`· all exercises`**; **exercise** mode adds **`›`** and the exercise folder name after the trimmed lesson title (derived from the lesson folder name; very long titles are shortened).
+- Root **`lesson_suite`** uses **`job_title`** ending with **`· all exercises`** (lesson wave).
+- Inner **`test_exercises`** uses **`›`** plus the exercise folder name after the trimmed lesson title (same **`job_title`** rules as before).
+- **`key`** is ASCII-safe for artifact names only (`matrix-ndjson-…`).
 
-**Granularity**
+**Concurrency**
 
-- **Push / pull_request** runs default to **`lesson`** (one matrix cell per lesson folder; fewer cells than exercise mode; **`test_matrix`** runs cells **one after another**, not concurrently).
-- **workflow_dispatch → Run workflow** offers **`lesson`** or **`exercise`** (one job per exercise folder for the clearest lesson → exercise map; sequential runs increase wall-clock time vs full parallel).
+- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
+- Inside each suite, only **one exercise job runs at a time** (**`test_exercises`** **`max-parallel: 1`**).
 
-Only one **test_matrix** cell runs at a time, so workspaces are isolated per cell and you avoid concurrent writes to shared `lab/` paths across CI jobs (local parallel mode is not used in this workflow).
+Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
 
-**Local filtered run** (matches what CI passes per cell):
+**Discovery env**
+
+| Scope | Variables | Matrix rows |
+| --- | --- | --- |
+| Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | One per lesson folder |
+| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise subfolder under that lesson |
+
+**Local filtered run** (matches each inner exercise cell):
 
 ```bash
 RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh

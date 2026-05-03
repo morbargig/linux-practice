@@ -10,6 +10,7 @@ on:
       - "docs/**"
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
+      - ".github/workflows/exercise-lesson-suite.yml"
   pull_request:
     branches: [main, master]
     paths:
@@ -19,16 +20,8 @@ on:
       - "docs/**"
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
+      - ".github/workflows/exercise-lesson-suite.yml"
   workflow_dispatch:
-    inputs:
-      granularity:
-        description: "Matrix granularity — lesson (fewer jobs) or exercise (one job per exercise folder)"
-        type: choice
-        required: false
-        default: lesson
-        options:
-          - lesson
-          - exercise
 
 permissions:
   contents: read
@@ -41,67 +34,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Discover exercise matrix
+      - name: Discover lessons matrix
         id: set_matrix
         env:
-          CI_MATRIX_GRANULARITY: ${{ github.event.inputs.granularity || 'lesson' }}
+          CI_DISCOVER_SCOPE: root_lessons
         run: bash scripts/ci-discover-matrix.sh
 
-  test_matrix:
+  # One invocation per lesson (sequential). Each runs exercise-lesson-suite → m exercise jobs.
+  lesson_suite:
     name: ${{ matrix.job_title }}
     needs: discover
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # One cell at a time so runs follow discovery order (lesson 01→…, exercises sorted).
       max-parallel: 1
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install tooling used by exercises and harness
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tree jq iproute2
-
-      - name: Prepare lab fixtures
-        run: bash scripts/setup.sh
-
-      - name: Run exercise tests (filtered)
-        id: filtered_tests
-        env:
-          PROGRESS_STUDENT_ID: ${{ github.actor }}
-          RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
-          RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
-        run: bash scripts/run-all-tests.sh
-        continue-on-error: true
-
-      - name: Upload NDJSON fragment
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: matrix-ndjson-${{ matrix.key }}
-          path: reports/.last-run.ndjson
-          if-no-files-found: ignore
-
-      - name: Cell summary
-        if: always()
-        run: |
-          {
-            echo "### ${{ matrix.job_title }}"
-            echo ""
-            echo "- **Outcome:** ${{ steps.filtered_tests.outcome }}"
-            echo "- **Artifact key:** \`${{ matrix.key }}\` (NDJSON fragment name)"
-            echo "- **Paths:** \`${{ matrix.lesson_dir }}\` → \`${{ matrix.exercise_slug }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Propagate test failure
-        if: steps.filtered_tests.outcome != 'success'
-        run: exit 1
+    uses: ./.github/workflows/exercise-lesson-suite.yml
+    secrets: inherit
+    with:
+      lesson_dir: ${{ matrix.lesson_dir }}
+      lesson_job_title: ${{ matrix.job_title }}
 
   aggregate_reports:
     name: Aggregate progress reports
-    needs: test_matrix
+    needs: lesson_suite
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -154,13 +109,13 @@ jobs:
 
   enforce_success:
     name: Workflow gate
-    needs: test_matrix
+    needs: lesson_suite
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any matrix cell failed
+      - name: Fail if any lesson suite or exercise cell failed
         run: |
-          if [[ "${{ needs.test_matrix.result }}" != "success" ]]; then
-            echo "One or more matrix jobs failed (result=${{ needs.test_matrix.result }})."
+          if [[ "${{ needs.lesson_suite.result }}" != "success" ]]; then
+            echo "One or more lesson suites or exercise jobs failed (result=${{ needs.lesson_suite.result }})."
             exit 1
           fi
