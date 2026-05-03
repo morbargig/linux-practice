@@ -1,7 +1,6 @@
 name: Lesson exercise suite
 
-# Invoked once per lesson from exercise-tests.yml.
-# One runner per lesson: apt/setup once, then all exercises in order (concatenated NDJSON).
+# One runner per lesson: installs deps once, runs exercises sequentially, merges NDJSON for aggregation.
 on:
   workflow_call:
     inputs:
@@ -13,8 +12,8 @@ on:
         description: Title for this reusable workflow run (lesson row)
         required: true
         type: string
-      lesson_key:
-        description: Stable artifact key for this lesson (e.g. 02__lesson)
+      lesson_matrix_key:
+        description: Stable key from root discovery (artifact prefix), e.g. 01__lesson
         required: true
         type: string
 
@@ -25,8 +24,8 @@ permissions:
   actions: write # actions/cache save/restore for APT archives
 
 jobs:
-  lesson_batch:
-    name: ${{ inputs.lesson_job_title }} · exercises (single runner)
+  exercises_for_lesson:
+    name: ${{ inputs.lesson_job_title }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,32 +43,38 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends tree jq iproute2
 
-      - name: Run all exercises for lesson (ordered, one VM)
-        id: batch
-        continue-on-error: true
+      - name: Prepare lab fixtures
+        run: bash scripts/setup.sh
+
+      - name: Run all exercises in lesson order (single runner)
+        id: lesson_run
         env:
           PROGRESS_STUDENT_ID: ${{ github.actor }}
-        run: bash scripts/ci-run-lesson-batch.sh "${{ inputs.lesson_dir }}"
+          LESSON_DIR: ${{ inputs.lesson_dir }}
+        run: bash scripts/ci-run-lesson-exercises.sh
+        continue-on-error: true
 
-      - name: Upload lesson NDJSON fragment
+      - name: Upload NDJSON fragment for lesson
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: matrix-ndjson-${{ inputs.lesson_key }}
+          name: matrix-ndjson-${{ inputs.lesson_matrix_key }}
           path: reports/.last-run.ndjson
           if-no-files-found: ignore
 
-      - name: Summary
+      - name: Lesson summary
         if: always()
         run: |
           {
             echo "### ${{ inputs.lesson_job_title }}"
             echo ""
-            echo "- **Mode:** **one runner** per lesson — \`setup.sh\` before each exercise, ordered batch, **stop at first failing exercise**."
-            echo "- **Artifact:** \`matrix-ndjson-${{ inputs.lesson_key }}\`"
-            echo "- **Outcome:** ${{ steps.batch.outcome }}"
+            echo "- **Runner:** single VM — apt + \`setup.sh\` once; exercises run **sequentially** (\`ci-run-lesson-exercises.sh\`)."
+            echo "- **Outcome:** ${{ steps.lesson_run.outcome }}"
+            if [[ -f reports/.last-run.ndjson ]]; then
+              echo "- **NDJSON lines:** $(wc -l < reports/.last-run.ndjson)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Propagate lesson failure
-        if: steps.batch.outcome != 'success'
+      - name: Propagate failures
+        if: steps.lesson_run.outcome != 'success'
         run: exit 1

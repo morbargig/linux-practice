@@ -43,7 +43,7 @@ jobs:
           CI_DISCOVER_SCOPE: root_lessons
         run: bash scripts/ci-discover-matrix.sh
 
-  # One invocation per lesson (sequential). Each reusable run uses ONE runner for all exercises in that lesson.
+  # One invocation per lesson (sequential). Each runs exercise-lesson-suite → m exercise jobs.
   lesson_suite:
     name: ${{ matrix.job_title }}
     needs: discover
@@ -56,7 +56,7 @@ jobs:
     with:
       lesson_dir: ${{ matrix.lesson_dir }}
       lesson_job_title: ${{ matrix.job_title }}
-      lesson_key: ${{ matrix.key }}
+      lesson_matrix_key: ${{ matrix.key }}
 
   aggregate_reports:
     name: Aggregate progress reports
