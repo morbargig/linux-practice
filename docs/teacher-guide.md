@@ -62,6 +62,12 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 3. Shared helpers live in **`scripts/test-lib.sh`** (`emit_result`, placeholder checks, etc.).
 4. **Lesson 05** exercises validate **`task.sh`** network summaries; most earlier lessons validate student scripts (`*.sh` excluding `test.sh` / `task.sh`).
+5. **`scripts/run-all-tests.sh`** only descends immediate children of **`exercises/`** whose names match **`^[0-9]{2}[[:space:]]`** (two digits, then whitespace). Keep lesson folders under that pattern and avoid unrelated sibling directories at the same level.
+
+## Repository layout
+
+- **`exercises/lab`** is a symlink to **`lab/`** at the repo root so starter scripts using `../../lab/...` resolve correctly from exercise folders. Preserve this symlink when restructuring files.
+- Several exercises recreate scratch files under **`lab/`** (permissions drills, awk samples, backups). Matching paths are **`gitignore`d** so local runs do not clutter `git status`.
 
 ## Adding a new exercise
 
@@ -86,4 +92,5 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 - **Empty `reports/.last-run.ndjson` / missing reports** — ensure `jq` is installed; rerun `scripts/run-all-tests.sh`.
 - **False fails on student laptops** — remind students that CI is **Ubuntu**; WSL2 or a container reduces drift.
+- **Red CI while placeholders remain** — unfinished starters still contain `_____`; failures on the class template branch until students complete work are normal. Keep an instructor solutions branch or fork when you need an always-green baseline for comparison.
 - **Want stricter/softer grading** — edit the exercise’s `test.sh` assertions; avoid changing the `RESULT …` contract without updating `scripts/run-all-tests.sh`.
