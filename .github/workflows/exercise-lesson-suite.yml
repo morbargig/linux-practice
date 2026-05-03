@@ -1,0 +1,78 @@
+name: Lesson exercise suite
+
+# Invoked once per lesson from exercise-tests.yml.
+# One runner per lesson: apt/setup once, then all exercises in order (concatenated NDJSON).
+on:
+  workflow_call:
+    inputs:
+      lesson_dir:
+        description: Lesson folder basename under exercises/
+        required: true
+        type: string
+      lesson_job_title:
+        description: Title for this reusable workflow run (lesson row)
+        required: true
+        type: string
+      lesson_key:
+        description: Stable artifact key for this lesson (e.g. 02__lesson)
+        required: true
+        type: string
+
+run-name: "${{ inputs.lesson_job_title }}"
+
+permissions:
+  contents: read
+  actions: write # actions/cache save/restore for APT archives
+
+jobs:
+  lesson_batch:
+    name: ${{ inputs.lesson_job_title }} · exercises (single runner)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache APT archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-
+
+      - name: Install tooling used by exercises and harness
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tree jq iproute2
+
+      - name: Prepare lab fixtures
+        run: bash scripts/setup.sh
+
+      - name: Run all exercises for lesson (ordered, one VM)
+        id: batch
+        continue-on-error: true
+        env:
+          PROGRESS_STUDENT_ID: ${{ github.actor }}
+        run: bash scripts/ci-run-lesson-batch.sh "${{ inputs.lesson_dir }}"
+
+      - name: Upload lesson NDJSON fragment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-ndjson-${{ inputs.lesson_key }}
+          path: reports/.last-run.ndjson
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ inputs.lesson_job_title }}"
+            echo ""
+            echo "- **Mode:** all exercises for this lesson on **one runner** (single \`setup.sh\`, ordered batch)."
+            echo "- **Artifact:** \`matrix-ndjson-${{ inputs.lesson_key }}\`"
+            echo "- **Outcome:** ${{ steps.batch.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Propagate lesson failure
+        if: steps.batch.outcome != 'success'
+        run: exit 1

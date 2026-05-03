@@ -74,21 +74,59 @@ Adjust the corresponding `test.sh` if your class policy differs.
 - **`main`** is the **unresolved** student template (TODOs / `_____` placeholders). Learners fork or clone from **`main`**; CI on **`main`** is expected to fail until work is finished (aside from deliberate **skip** tests).
 - **Do not merge** reference or solution branches into **`main`** for repos handed to students. Keep worked answers on a **separate branch or private fork**, rebasing onto **`main`** whenever the template changes—same pattern as an instructor-only “always-green baseline” branch mentioned under Troubleshooting.
 
-## CI (GitHub Actions)
+## CI matrix (GitHub Actions)
 
-[`exercise-tests.yml`](../.github/workflows/exercise-tests.yml) uses **one Ubuntu job** for speed: single checkout, [**APT archive cache**](../.github/ci-apt-packages.txt) (`tree`, `jq`, `iproute2`), **`scripts/setup.sh`**, then **`bash scripts/run-all-tests.sh`** over the **entire** lesson tree (same as a full local run). That avoids spawning a fresh runner per lesson or exercise.
+CI uses **two workflow layers**: the root workflow schedules **one reusable invocation per lesson** (sequential). Inside each invocation, **one runner** runs **every exercise for that lesson in order** via [`scripts/ci-run-lesson-batch.sh`](scripts/ci-run-lesson-batch.sh): **one** checkout/apt/`setup.sh`, filtered **`run-all-tests.sh`** per exercise with **`SKIP_PROGRESS_REPORT`** so **`progress.json`** is not regenerated until the root **`aggregate_reports`** job; NDJSON lines are **concatenated** into **`reports/.last-run.ndjson`** and uploaded once as **`matrix-ndjson-<lesson_key>`** (same pattern the aggregator already expects).
 
-The workflow uploads **`progress-reports`** (`progress-report.md`, `progress.json`), prints a job summary with totals and **By lesson** tables ([`scripts/ci-append-lesson-overview-to-summary.sh`](../scripts/ci-append-lesson-overview-to-summary.sh)), and fails the job if the harness exits non-zero.
+| Workflow | Role |
+| --- | --- |
+| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson. **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calling **`exercise-lesson-suite.yml`** with **`lesson_dir`**, **`lesson_job_title`**, **`lesson_key`**. **`aggregate_reports`** downloads **`matrix-ndjson-*`**, merges NDJSON, builds **`progress-reports`**. **`enforce_success`** gates on **`lesson_suite`**. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`lesson_batch`** — cache APT archives (`actions/cache`, keyed by [`.github/ci-apt-packages.txt`](.github/ci-apt-packages.txt)), install **`tree` / `jq` / `iproute2`**, **`setup.sh`**, then **`ci-run-lesson-batch.sh`** for **`inputs.lesson_dir`**; uploads **`matrix-ndjson-<lesson_key>`** (for example `02__lesson`; artifact holds **one NDJSON line per exercise**). |
 
-**Maintainers:** [`scripts/ci_discover_matrix.py`](../scripts/ci_discover_matrix.py) remains useful **locally** to inspect matrix JSON (`CI_DISCOVER_SCOPE=root_lessons` or `lesson_exercises` + `CI_LESSON_DIR`); Actions no longer consumes it.
+```mermaid
+flowchart LR
+  discoverRoot[discover_root_lessons]
+  lessonWave[lesson_suite_per_lesson]
+  reusableRun[exercise_lesson_suite]
+  lessonBatch[lesson_batch_single_runner]
+  discoverRoot --> lessonWave
+  lessonWave --> reusableRun
+  reusableRun --> lessonBatch
+```
 
-**Local filtered run** (single lesson/exercise):
+**Presentation**
+
+- Root **`lesson_suite`** rows keep **`job_title`** ending with **`· all exercises`**.
+- Inner reusable job title highlights **single-runner batch** (GitHub no longer lists one Actions row per exercise; **`progress-report`** / **`progress.json`** still list each exercise).
+
+**Concurrency**
+
+- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
+- **All exercises in that lesson share one VM**, executed sequentially inside **`lesson_batch`**.
+
+Artifacts from reusable workflow runs attach to the **same root workflow run**. **`APT`** package archives are cached between jobs (`actions/cache` + `.github/ci-apt-packages.txt`) to shorten **`apt-get install`**.
+
+**Discovery env**
+
+| Scope | Variables | Output |
+| --- | --- | --- |
+| Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | One matrix row per lesson folder |
+| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` + **`CI_LESSON_DIR`** | JSON **`include`** rows per exercise ([`ci_discover_matrix.py`](scripts/ci_discover_matrix.py)); consumed by **`ci-run-lesson-batch.sh`** for ordering |
+
+**Local runs**
+
+Single exercise (same as each batch step):
 
 ```bash
 RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh
 ```
 
-Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
+Whole lesson on one machine (similar to CI):
+
+```bash
+bash scripts/setup.sh
+bash scripts/ci-run-lesson-batch.sh '01 — Linux Fundamentals'
+```
 
 ## Adding a new exercise
 
@@ -107,7 +145,7 @@ Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
    bash scripts/run-all-tests.sh
    ```
 
-5. Commit and push; **Exercise tests** runs automatically when `exercises/**`, `scripts/**`, or the workflow changes (see **CI (GitHub Actions)** above).
+5. Commit and push; **Exercise tests** runs automatically when `exercises/**`, `scripts/**`, or the workflow changes. CI discovers lessons/exercises dynamically (see **CI matrix** above).
 
 ## Troubleshooting
 
