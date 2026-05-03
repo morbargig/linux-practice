@@ -3,12 +3,12 @@ set -e
 
 TARGET="../../lab/files/newfile.txt"
 
-if [ _____ ]; then
+if [ -f "$TARGET" ]; then
   echo "File exists"
 else
   echo "File not found, creating..."
   # TODO: create the file
-  _____ "$TARGET"
+  touch "$TARGET"
 fi
 
 echo "Done"

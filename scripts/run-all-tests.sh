@@ -104,6 +104,9 @@ for lesson_dir in "$REPO_ROOT"/exercises/*/; do
   [[ -d "$lesson_dir" ]] || continue
 
   lesson_basename="$(basename "$lesson_dir")"
+  # Only lesson folders like "01 — Linux Fundamentals" (skip stray dirs such as nested copies of lab/)
+  [[ "$lesson_basename" =~ ^[0-9]{2}[[:space:]] ]] || continue
+
   lesson_number_str="$(printf '%s' "$lesson_basename" | sed -n 's/^\([0-9]\{1,\}\).*/\1/p')"
   # Strip leading decimal digits + whitespace + UTF-8 em dash (U+2014) + whitespace
   lesson_title_trim="$(printf '%s' "$lesson_basename" | sed $'s/^[0-9]\{1,\}[[:space:]]*\xe2\x80\x94[[:space:]]*//')"

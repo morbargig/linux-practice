@@ -5,8 +5,8 @@ LAB="../../lab/files"
 
 echo "1) Create a simple function"
 # TODO: create function greet() that prints "Hello from function!"
-_____() {
-  echo "_____"
+greet() {
+  echo "Hello from function!"
 }
 greet
 
@@ -26,7 +26,7 @@ echo "3) Function that returns count"
 count_lines() {
   local file=$1
   # TODO: return line count using wc -l
-  wc -l < "$file"
+  wc -l <"$file"
 }
 lines=$(count_lines "$LAB/logs/app.log")
 echo "Log file has $lines lines"

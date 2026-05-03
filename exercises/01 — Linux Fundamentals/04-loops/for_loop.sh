@@ -10,6 +10,6 @@ for f in "$LAB"/*.txt
 do
   # TODO: print name and size in bytes
   # HINT: wc -c <file OR stat -c %s <file
-  size=_____
+  size=$(stat -c%s "$f")
   echo "$(basename "$f") $size"
 done

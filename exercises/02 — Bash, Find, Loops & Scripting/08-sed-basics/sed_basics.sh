@@ -8,22 +8,22 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "1) Replace text in output"
 # TODO: echo a string and use sed to replace 'alpha' with 'ALPHA'
-echo "alpha beta gamma" | sed 's/_____/_____/'
+echo "alpha beta gamma" | sed 's/alpha/ALPHA/'
 
 echo ""
 echo "2) Replace all occurrences"
 # TODO: replace all 'INFO' with 'LOG' in app.log output
-cat "$LAB/logs/app.log" | sed 's/_____/_____/g'
+cat "$LAB/logs/app.log" | sed 's/INFO/LOG/g'
 
 echo ""
 echo "3) Delete lines containing pattern"
 # TODO: print app.log but delete lines with 'WARN'
-cat "$LAB/logs/app.log" | sed '/_____/d'
+cat "$LAB/logs/app.log" | sed '/WARN/d'
 
 echo ""
 echo "4) Print specific line numbers"
 # TODO: print only line 2 from app.log
-sed -n '_____p' "$LAB/logs/app.log"
+sed -n '2p' "$LAB/logs/app.log"
 
 echo ""
 echo "5) Replace and save to new file"

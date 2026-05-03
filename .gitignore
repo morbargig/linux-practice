@@ -1,4 +1,10 @@
 lab/output/
+lab/backups/
+lab/files/broken_script.sh
+lab/files/test_chmod.txt
+lab/files/test_ownership.txt
+lab/files/tmp/awk_training_colons.txt
+lab/files/tmp/text_pipeline_sample.txt
 .DS_Store
 
 # Generated CI / local progress outputs (folder kept via reports/.gitkeep)

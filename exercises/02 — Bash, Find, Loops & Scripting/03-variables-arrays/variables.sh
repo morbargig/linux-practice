@@ -5,25 +5,25 @@ LAB="../../lab/files"
 
 echo "1) Create and use variables"
 # TODO: set name variable to your name
-name=_____
+name="student"
 echo "Hello, $name!"
 
 echo ""
 echo "2) Use command substitution"
 # TODO: get current date using $(date)
-current_date=$(_____)
+current_date=$(date)
 echo "Today is: $current_date"
 
 echo ""
 echo "3) Create an array of file extensions"
 # TODO: create array with: txt conf log
-extensions=(_____)
+extensions=(txt conf log)
 echo "Extensions: ${extensions[@]}"
 
 echo ""
 echo "4) Loop through array"
 # TODO: loop through extensions array and print each
-for ext in _____
+for ext in "${extensions[@]}"
 do
   echo "Extension: $ext"
 done

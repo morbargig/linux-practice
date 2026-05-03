@@ -28,7 +28,7 @@ validate_source() {
 # Function to create backup directory
 create_backup_dir() {
   # TODO: create backup directory using mkdir -p
-  _____ -p "$BACKUP_DIR"
+  mkdir -p "$BACKUP_DIR"
   log_message "Backup directory created: $BACKUP_DIR"
 }
 
@@ -38,7 +38,7 @@ copy_files() {
   
   # TODO: copy all files preserving structure
   # HINT: use cp -r to copy recursively
-  _____ -r "$SOURCE_DIR"/* "$BACKUP_DIR/" 2>/dev/null || {
+  cp -r "$SOURCE_DIR"/* "$BACKUP_DIR/" 2>/dev/null || {
     # Alternative: use find if cp fails
     find "$SOURCE_DIR" -type f -exec sh -c 'mkdir -p "$2/$(dirname "$1")" && cp "$1" "$2/$1"' _ {} "$BACKUP_DIR" \;
   }
@@ -49,10 +49,10 @@ copy_files() {
 # Function to create summary
 create_summary() {
   # TODO: count files in backup (exclude backup.log)
-  file_count=$(find "$BACKUP_DIR" -type f ! -name "backup.log" | _____)
+  file_count=$(find "$BACKUP_DIR" -type f ! -name "backup.log" | wc -l | tr -d '[:space:]')
   
   # TODO: calculate total size using du
-  total_size=$(_____ -sh "$BACKUP_DIR" | cut -f1)
+  total_size=$(du -sh "$BACKUP_DIR" | cut -f1)
   
   log_message "=== Backup Summary ==="
   log_message "Source: $SOURCE_DIR"

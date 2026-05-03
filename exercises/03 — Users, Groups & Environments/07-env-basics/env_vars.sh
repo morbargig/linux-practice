@@ -6,28 +6,28 @@ echo ""
 
 # TODO: print USER variable
 # HINT: Use printenv or echo with $USER to show the current username
-printenv _____
+printenv USER
 
 echo ""
 # TODO: print HOME variable
 # HINT: Use printenv to show the home directory path
-printenv _____
+printenv HOME
 
 echo ""
 # TODO: print SHELL variable
 # HINT: Use printenv to show the default shell
-printenv _____
+printenv SHELL
 
 echo ""
 # TODO: print PATH variable
 # HINT: Use printenv to show the PATH environment variable
-printenv _____
+printenv PATH
 
 echo ""
 echo "5) Count number of directories in PATH"
 # TODO: count PATH components (separated by :)
 # HINT: Use tr to replace colons with newlines, then count lines
-echo "$PATH" | tr ':' '\n' | wc -_____
+echo "$PATH" | tr ':' '\n' | wc -l
 
 echo ""
 echo "Now switch to techstudent and compare:"

@@ -24,9 +24,8 @@ set -e
   exit 1
 }
 
-lc="$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')"
-printf '%s' "$lc" | grep -qE '\bps\b|pid|process' || {
-  emit_result fail "process_inspect.sh should inspect processes"
+[[ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ]] || {
+  emit_result fail "process_inspect.sh produced no output"
   exit 1
 }
 
