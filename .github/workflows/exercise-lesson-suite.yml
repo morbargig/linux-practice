@@ -17,6 +17,7 @@ run-name: "${{ inputs.lesson_job_title }}"
 
 permissions:
   contents: read
+  actions: write # actions/cache save/restore for APT archives
 
 jobs:
   discover_exercises:
@@ -44,10 +45,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache APT archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-
+
       - name: Install tooling used by exercises and harness
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y tree jq iproute2
+          sudo apt-get install -y --no-install-recommends tree jq iproute2
 
       - name: Prepare lab fixtures
         run: bash scripts/setup.sh

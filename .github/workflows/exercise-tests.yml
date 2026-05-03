@@ -11,6 +11,7 @@ on:
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
       - ".github/workflows/exercise-lesson-suite.yml"
+      - ".github/ci-apt-packages.txt"
   pull_request:
     branches: [main, master]
     paths:
@@ -21,10 +22,12 @@ on:
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
       - ".github/workflows/exercise-lesson-suite.yml"
+      - ".github/ci-apt-packages.txt"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write # actions/cache for APT archives on aggregate job
 
 jobs:
   discover:
@@ -68,11 +71,19 @@ jobs:
           merge-multiple: true
           path: artifacts/
 
+      - name: Cache APT archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-
+
       - name: Merge NDJSON and generate reports
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y jq
+          sudo apt-get install -y --no-install-recommends jq
           mkdir -p reports
           mapfile -t files < <(find artifacts -type f -name '.last-run.ndjson' | LC_ALL=C sort || true)
           if ((${#files[@]} == 0)); then
