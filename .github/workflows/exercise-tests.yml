@@ -43,13 +43,12 @@ jobs:
           CI_DISCOVER_SCOPE: root_lessons
         run: bash scripts/ci-discover-matrix.sh
 
-  # One invocation per lesson (sequential). Each runs exercise-lesson-suite → m exercise jobs.
+  # One reusable invocation per lesson (parallel across lessons). Each runs exercise-lesson-suite → exercise matrix.
   lesson_suite:
     name: ${{ matrix.job_title }}
     needs: discover
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     uses: ./.github/workflows/exercise-lesson-suite.yml
     secrets: inherit
@@ -72,19 +71,13 @@ jobs:
           merge-multiple: true
           path: artifacts/
 
-      - name: Cache APT archives
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-archives-
-
       - name: Merge NDJSON and generate reports
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends jq
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends jq
+          fi
           mkdir -p reports
           mapfile -t files < <(find artifacts -type f -name '.last-run.ndjson' | LC_ALL=C sort || true)
           if ((${#files[@]} == 0)); then

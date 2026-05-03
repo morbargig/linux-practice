@@ -76,20 +76,20 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 ## CI matrix (GitHub Actions)
 
-CI uses **two workflow layers** so each lesson splits into **ordered exercise jobs** (GitHub cannot nest matrices in one file; this uses a **caller + reusable workflow**).
+CI uses **two workflow layers** so each lesson splits into **parallel exercise jobs** (GitHub cannot nest matrices in one file; this uses a **caller + reusable workflow**).
 
 | Workflow | Role |
 | --- | --- |
-| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calls **`exercise-lesson-suite.yml`** once per lesson, passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** / **`enforce_success`** unchanged. |
-| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`discover_exercises`** — builds the inner exercise matrix. **`prepare_lesson`** — runs **`sudo apt-get update`** once, installs packages from **[`.github/ci-apt-packages.txt`](.github/ci-apt-packages.txt)** via **`scripts/ci-apt-install-packages.sh`**, runs **`scripts/setup.sh` once**, packs **`lab/`** into **`lesson-lab.tgz`**, then snapshots **`/var/cache/apt/archives`** + **`/var/lib/apt/lists`** into **`ci-apt-snapshot.tgz`** and uploads **`lesson-lab-*`** + **`lesson-apt-*`** artifacts. **`test_exercises`** — restores the APT tarball (no **`apt-get update`**), reinstalls the same packages from local archives/lists, restores **`lab/`**, runs filtered **`run-all-tests.sh`** per exercise. **`prepare_lesson`** still uses **`actions/cache`** on **`/var/cache/apt/archives`** so reruns warm `.deb` downloads across workflow runs. |
+| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — outer matrix runs **one reusable workflow per lesson in parallel** (no **`max-parallel`** cap), passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** / **`enforce_success`** unchanged. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`prepare_lesson`** — discovers exercises (**`lesson_exercises`** scope), runs **`sudo apt-get update`** once, installs packages from **[`.github/ci-apt-packages.txt`](.github/ci-apt-packages.txt)** via **`scripts/ci-apt-install-packages.sh`**, runs **`scripts/setup.sh` once**, packs **`lab/`** into **`lesson-lab.tgz`**, snapshots **`/var/cache/apt/archives`** + **`/var/lib/apt/lists`** into **`ci-apt-snapshot.tgz`**, uploads **one** artifact **`lesson-ci-<lesson_cache_key>`** containing both tarballs (one download per exercise job). **`prepare_lesson`** still uses **`actions/cache`** on **`/var/cache/apt/archives`** across workflow runs. **`test_exercises`** — matrix jobs run **in parallel** (GitHub default concurrency): restore APT snapshot (no **`apt-get update`**), reinstall packages, restore **`lab/`**, run filtered **`run-all-tests.sh`**. |
 
 ```mermaid
 flowchart LR
   discoverRoot[discover_root_lessons]
-  lessonWave[lesson_suite_per_lesson]
+  lessonWave[lesson_suite_parallel_lessons]
   reusableRun[exercise_lesson_suite]
-  prepareLab[prepare_lesson_setup_once]
-  exercisesInner[test_exercises_matrix]
+  prepareLab[prepare_lesson_discover_plus_snapshots]
+  exercisesInner[test_exercises_parallel_matrix]
   discoverRoot --> lessonWave
   lessonWave --> reusableRun
   reusableRun --> prepareLab
@@ -104,8 +104,10 @@ flowchart LR
 
 **Concurrency**
 
-- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
-- Inside each suite, only **one exercise job runs at a time** (**`test_exercises`** **`max-parallel: 1`**).
+- **Lesson suites** can run **in parallel** at the root (no **`max-parallel`** cap); GitHub queues only when your account hits concurrency limits.
+- **Exercise jobs** inside each lesson suite run **in parallel** by default (same caveat).
+
+Combined **`progress.json`** / NDJSON order follows **`find … \| LC_ALL=C sort`** in **`aggregate_reports`**, not job completion order.
 
 Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
 

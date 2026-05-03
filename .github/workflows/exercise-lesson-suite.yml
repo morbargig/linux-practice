@@ -1,6 +1,6 @@
 name: Lesson exercise suite
 
-# Invoked once per lesson from exercise-tests.yml; runs an ordered matrix of exercises.
+# Invoked once per lesson from exercise-tests.yml; runs exercise matrix jobs (parallel by default).
 on:
   workflow_call:
     inputs:
@@ -24,10 +24,12 @@ permissions:
   actions: write # actions/cache save/restore for APT archives
 
 jobs:
-  discover_exercises:
-    runs-on: ubuntu-latest
+  # Discovery + apt + lab snapshot in one job (avoids a separate discover runner per lesson).
+  prepare_lesson:
+    name: Prepare (${{ inputs.lesson_cache_key }})
     outputs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -37,14 +39,6 @@ jobs:
           CI_DISCOVER_SCOPE: lesson_exercises
           CI_LESSON_DIR: ${{ inputs.lesson_dir }}
         run: bash scripts/ci-discover-matrix.sh
-
-  # One apt update + package install + setup.sh + dd big.bin per lesson; exercise jobs restore APT + lab snapshots (no apt-get update).
-  prepare_lesson:
-    name: Prepare lab (${{ inputs.lesson_cache_key }})
-    needs: discover_exercises
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Cache APT archives
         uses: actions/cache@v4
@@ -73,41 +67,29 @@ jobs:
             -C / var/cache/apt/archives var/lib/apt/lists > ci-apt-snapshot.tgz
           [[ -s ci-apt-snapshot.tgz ]]
 
-      - name: Upload lab snapshot
+      # Single artifact ⇒ one download per exercise job (smaller Actions overhead than two uploads).
+      - name: Upload lesson CI bundle (lab + APT snapshot)
         uses: actions/upload-artifact@v4
         with:
-          name: lesson-lab-${{ inputs.lesson_cache_key }}
-          path: lesson-lab.tgz
-
-      - name: Upload APT snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: lesson-apt-${{ inputs.lesson_cache_key }}
-          path: ci-apt-snapshot.tgz
+          name: lesson-ci-${{ inputs.lesson_cache_key }}
+          path: |
+            lesson-lab.tgz
+            ci-apt-snapshot.tgz
 
   test_exercises:
     name: ${{ matrix.job_title }}
-    needs:
-      - discover_exercises
-      - prepare_lesson
+    needs: prepare_lesson
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1
-      matrix: ${{ fromJSON(needs.discover_exercises.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.prepare_lesson.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download lab snapshot from prepare_lesson
+      - name: Download lesson CI bundle from prepare_lesson
         uses: actions/download-artifact@v4
         with:
-          name: lesson-lab-${{ inputs.lesson_cache_key }}
-          path: downloaded/
-
-      - name: Download APT snapshot from prepare_lesson
-        uses: actions/download-artifact@v4
-        with:
-          name: lesson-apt-${{ inputs.lesson_cache_key }}
+          name: lesson-ci-${{ inputs.lesson_cache_key }}
           path: downloaded/
 
       - name: Restore APT snapshot (skip apt-get update on fresh runners)
