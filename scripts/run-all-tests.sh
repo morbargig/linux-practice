@@ -7,7 +7,9 @@ cd "$REPO_ROOT"
 
 mkdir -p reports
 NDJSON="$REPO_ROOT/reports/.last-run.ndjson"
-: >"$NDJSON"
+if [[ -z "${RUN_APPEND_NDJSON:-}" ]]; then
+  : >"$NDJSON"
+fi
 
 # Optional CI filters (basename of exercises/<lesson>/ only). RUN_EXERCISE_SLUG requires RUN_LESSON_DIR.
 if [[ -n "${RUN_EXERCISE_SLUG:-}" && -z "${RUN_LESSON_DIR:-}" ]]; then
@@ -185,6 +187,8 @@ printf '\n━━━━━━━━━━━━━━━━━━━━━━━�
 printf 'Totals — passed: %s  skipped: %s  failed: %s\n' "$total_pass" "$total_skip" "$total_fail"
 printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 
-bash "$REPO_ROOT/scripts/generate-progress-report.sh"
+if [[ -z "${SKIP_PROGRESS_REPORT:-}" ]]; then
+  bash "$REPO_ROOT/scripts/generate-progress-report.sh"
+fi
 
 exit "$overall_fail"

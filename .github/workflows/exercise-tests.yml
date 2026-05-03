@@ -72,13 +72,15 @@ jobs:
           merge-multiple: true
           path: artifacts/
 
-      - name: Cache APT archives
+      - name: Cache APT archives and lists
         uses: actions/cache@v4
         with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/ci-apt-packages.txt') }}
           restore-keys: |
-            ${{ runner.os }}-apt-archives-
+            ${{ runner.os }}-apt-
 
       - name: Merge NDJSON and generate reports
         run: |

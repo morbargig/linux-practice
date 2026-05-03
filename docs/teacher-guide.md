@@ -76,54 +76,53 @@ Adjust the corresponding `test.sh` if your class policy differs.
 
 ## CI matrix (GitHub Actions)
 
-CI uses **two workflow layers**: a **caller** discovers lessons; a **reusable workflow** runs **one Ubuntu job per lesson** (checkout → APT → **`setup.sh`** → **`run-all-tests.sh`** with **`RUN_LESSON_DIR`** only). That avoids repeating tooling on every exercise: a GitHub Actions **matrix cell is always a separate runner**, so an inner “one row per exercise” matrix with **`max-parallel: 1`** still paid **N × (checkout + APT + …)** for N exercises.
+CI uses **two workflow layers** so each lesson splits into **ordered exercise jobs** (GitHub cannot nest matrices in one file; this uses a **caller + reusable workflow**).
 
 | Workflow | Role |
 | --- | --- |
-| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calls **`exercise-lesson-suite.yml`** once per lesson, passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** merges **`matrix-ndjson-*`** fragments; **`enforce_success`** gates the workflow. |
-| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | Single job **`lesson_exercises`**: **`actions/cache`** on **`/var/cache/apt/archives`** (key hashes [`.github/ci-apt-packages.txt`](../.github/ci-apt-packages.txt)), **`apt-get install`** for **`tree` / `jq` / `iproute2`**, **`scripts/setup.sh`** once, then **`scripts/run-all-tests.sh`** for the whole lesson (same order as locally). Uploads **`matrix-ndjson-<lesson_cache_key>`** (`reports/.last-run.ndjson`). |
-
-Speed notes ([`actions/cache`](https://github.com/actions/cache/), common APT patterns): caching **`.deb` archives** speeds **`apt-get install`** after the first run on a branch; the larger win here is **one job per lesson** instead of one job per exercise.
+| **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — sequential outer matrix (`max-parallel: 1`) calls **`exercise-lesson-suite.yml`** once per lesson, passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** / **`enforce_success`** unchanged. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`discover_exercises`** — emits JSON listing exercises for [**`scripts/ci-run-lesson-exercises-sequential.sh`**](scripts/ci-run-lesson-exercises-sequential.sh). **`prepare_lesson`** — lightweight checkout + **`scripts/setup.sh` once** + **`lesson-lab.tgz`** artifact (**no APT here** — **`setup.sh`** only builds **`lab/`**). **`run_lesson_exercises`** — **one runner per lesson**: restores APT cache (**`/var/cache/apt/archives`** + **`/var/lib/apt/lists`**), installs **`tree`/`jq`/`iproute2` once**, downloads the tarball, then loops exercises **in folder order**: extract fresh **`lab/`** each time and run filtered **`run-all-tests.sh`** (append NDJSON; skip per-loop Markdown reports — aggregation generates reports once). |
 
 ```mermaid
 flowchart LR
   discoverRoot[discover_root_lessons]
   lessonWave[lesson_suite_per_lesson]
-  reusableRun[lesson_exercises_one_runner]
+  reusableRun[exercise_lesson_suite]
+  prepareLab[prepare_lesson_setup_once]
+  exercisesInner[run_lesson_exercises_serial]
   discoverRoot --> lessonWave
   lessonWave --> reusableRun
+  reusableRun --> prepareLab
+  prepareLab --> exercisesInner
 ```
 
 **Presentation**
 
 - Root **`lesson_suite`** uses **`job_title`** ending with **`· all exercises`** (lesson wave).
-- **`lesson_cache_key`** stays ASCII-safe for artifact names (`matrix-ndjson-…`).
+- Inner **`run_lesson_exercises`** keeps the lesson **`job_title`** for the reusable workflow run name; individual exercises appear only in logs (still executed in sorted folder order).
+- **`lesson_cache_key`** remains ASCII-safe for artifacts (`lesson-lab-…`, `matrix-ndjson-…`).
 
 **Concurrency**
 
-- Only **one lesson runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
-- All exercises inside a lesson share **one runner** (serial order from **`run-all-tests.sh`**).
+- Only **one lesson suite runs at a time** at the root (**`lesson_suite`** **`max-parallel: 1`**).
+- Inside each suite, **one CI job runs every exercise serially** on the same runner — **no parallel exercise VMs**, no repeated APT installs beyond cache restore + **`apt-get install`** once per lesson job.
 
-Aggregated **`progress-reports`** still comes from **`download-artifact`** pattern **`matrix-ndjson-*`** (now typically **one fragment per lesson**).
+Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
 
 **Discovery env**
 
 | Scope | Variables | Matrix rows |
 | --- | --- | --- |
 | Root lessons | `CI_DISCOVER_SCOPE=root_lessons` | One per lesson folder |
-| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise (used by **`scripts/ci-discover-matrix.sh`** for local tooling / debugging — CI uses **`RUN_LESSON_DIR`** only for the whole lesson) |
+| Lesson exercises | `CI_DISCOVER_SCOPE=lesson_exercises` and **`CI_LESSON_DIR`** | One per exercise subfolder under that lesson |
 
-**Local filtered run** — whole lesson (matches CI per lesson):
-
-```bash
-RUN_LESSON_DIR='01 — Linux Fundamentals' bash scripts/run-all-tests.sh
-```
-
-Single exercise only:
+**Local filtered run** (matches each inner iteration):
 
 ```bash
 RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh
 ```
+
+Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
 
 ## Adding a new exercise
 

@@ -1,9 +1,6 @@
 name: Lesson exercise suite
 
-# Invoked once per lesson from exercise-tests.yml.
-# One runner per lesson: checkout → APT (cached archives) → setup.sh → full lesson harness.
-# Sequential exercise matrix jobs were removed — they restarted a VM each time and repeated APT
-# despite max-parallel: 1 (GitHub Actions matrix = separate jobs).
+# Invoked once per lesson from exercise-tests.yml; prepares lab once then runs exercises sequentially on one runner.
 on:
   workflow_call:
     inputs:
@@ -16,7 +13,7 @@ on:
         required: true
         type: string
       lesson_cache_key:
-        description: Stable ASCII id for NDJSON artifact (outer matrix key, e.g. 01__lesson)
+        description: Stable ASCII id for lab tarball artifact (outer matrix key, e.g. 01__lesson)
         required: true
         type: string
 
@@ -27,34 +24,79 @@ permissions:
   actions: write # actions/cache save/restore for APT archives
 
 jobs:
-  lesson_exercises:
-    name: ${{ inputs.lesson_job_title }}
+  discover_exercises:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Discover exercises for lesson
+        id: set_matrix
+        env:
+          CI_DISCOVER_SCOPE: lesson_exercises
+          CI_LESSON_DIR: ${{ inputs.lesson_dir }}
+        run: bash scripts/ci-discover-matrix.sh
+
+  # One setup.sh + dd big.bin per lesson; tarball reused between exercises on the sequential runner below.
+  prepare_lesson:
+    name: Prepare lab (${{ inputs.lesson_cache_key }})
+    needs: discover_exercises
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache APT archives
+      - name: Run setup.sh once for this lesson
+        run: bash scripts/setup.sh
+
+      - name: Pack lab snapshot
+        run: tar czf lesson-lab.tgz lab/
+
+      - name: Upload lab snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesson-lab-${{ inputs.lesson_cache_key }}
+          path: lesson-lab.tgz
+
+  # Single runner per lesson: APT/tooling once; exercises run strictly in order with lab restored each time.
+  run_lesson_exercises:
+    name: ${{ inputs.lesson_job_title }} — sequential exercises
+    needs:
+      - discover_exercises
+      - prepare_lesson
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache APT archives and lists
         uses: actions/cache@v4
         with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/ci-apt-packages.txt') }}
           restore-keys: |
-            ${{ runner.os }}-apt-archives-
+            ${{ runner.os }}-apt-
 
       - name: Install tooling used by exercises and harness
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tree jq iproute2
+          sudo apt-get install -y --no-install-recommends tree jq iproute2
 
-      - name: Prepare lab fixtures once
-        run: bash scripts/setup.sh
+      - name: Download lab snapshot from prepare_lesson
+        uses: actions/download-artifact@v4
+        with:
+          name: lesson-lab-${{ inputs.lesson_cache_key }}
+          path: downloaded/
 
-      - name: Run all exercises for this lesson
-        id: lesson_tests
+      - name: Run exercises sequentially (one install; ordered lab restores)
+        id: sequential_tests
         env:
+          MATRIX_JSON: ${{ needs.discover_exercises.outputs.matrix }}
+          LESSON_DIR: ${{ inputs.lesson_dir }}
+          LAB_ARCHIVE: downloaded/lesson-lab.tgz
           PROGRESS_STUDENT_ID: ${{ github.actor }}
-          RUN_LESSON_DIR: ${{ inputs.lesson_dir }}
-        run: bash scripts/run-all-tests.sh
+        run: bash scripts/ci-run-lesson-exercises-sequential.sh
         continue-on-error: true
 
       - name: Upload NDJSON fragment
@@ -65,16 +107,17 @@ jobs:
           path: reports/.last-run.ndjson
           if-no-files-found: ignore
 
-      - name: Cell summary
+      - name: Lesson exercise summary
         if: always()
         run: |
           {
             echo "### ${{ inputs.lesson_job_title }}"
             echo ""
-            echo "- **Outcome:** ${{ steps.lesson_tests.outcome }}"
-            echo "- **Lesson:** \`${{ inputs.lesson_dir }}\` (all exercises in one job)"
+            echo "- **Outcome:** ${{ steps.sequential_tests.outcome }}"
+            echo "- **Runner:** single job — APT/cache once per lesson; exercises **serial** (never parallel)."
+            echo "- **NDJSON artifact:** \`matrix-ndjson-${{ inputs.lesson_cache_key }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Propagate test failure
-        if: steps.lesson_tests.outcome != 'success'
+        if: steps.sequential_tests.outcome != 'success'
         run: exit 1
