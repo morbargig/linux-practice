@@ -9,6 +9,7 @@ mkdir -p reports
 NDJSON="$REPO_ROOT/reports/.last-run.ndjson"
 : >"$NDJSON"
 
+# SKIP_PROGRESS_REPORT=1 — skip generate-progress-report.sh (parallel CI shards upload NDJSON only).
 # Optional CI filters (basename of exercises/<lesson>/ only). RUN_EXERCISE_SLUG requires RUN_LESSON_DIR.
 if [[ -n "${RUN_EXERCISE_SLUG:-}" && -z "${RUN_LESSON_DIR:-}" ]]; then
   printf '%s\n' "run-all-tests.sh: RUN_EXERCISE_SLUG requires RUN_LESSON_DIR" >&2
@@ -185,6 +186,8 @@ printf '\n━━━━━━━━━━━━━━━━━━━━━━━�
 printf 'Totals — passed: %s  skipped: %s  failed: %s\n' "$total_pass" "$total_skip" "$total_fail"
 printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 
-bash "$REPO_ROOT/scripts/generate-progress-report.sh"
+if [[ -z "${SKIP_PROGRESS_REPORT:-}" ]]; then
+  bash "$REPO_ROOT/scripts/generate-progress-report.sh"
+fi
 
 exit "$overall_fail"

@@ -64,7 +64,7 @@ Typical flow:
 1. Commit your changes on a branch.
 2. **Push to your fork** and open a **pull request** to the class upstream (or push to the branch your instructor monitors).
 3. Open the **Actions** tab on GitHub and open the latest **Exercise tests** workflow run.
-4. When the job finishes, download the **`progress-reports`** artifact for the Markdown + JSON the teacher expects.
+4. When the job finishes, download the **`progress-reports`** artifact for the Markdown + JSON your instructor expects. **Ignore** large **`ci-lesson-bundle-*`** ZIPs and **`matrix-ndjson-*`** files — those are for CI only, not grades.
 
 Keep **TODO comments** and follow any “do not delete TODO” rules in the assignment; replacing `_____` placeholders with real commands is how you complete the work.
 

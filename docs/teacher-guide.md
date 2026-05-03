@@ -2,28 +2,38 @@
 
 This repository uses **co-located Bash tests** (`exercises/**/<exercise>/test.sh`), an aggregator (`scripts/run-all-tests.sh`), and **Markdown + JSON reports** suitable for archives or a future dashboard—no web application.
 
-## Where progress data appears
+## Where grading reports live
 
-Every CI run (and every successful local `scripts/run-all-tests.sh`) produces:
+These are what instructors (and rubrics) care about:
 
 | Output | Purpose |
 | --- | --- |
 | `reports/progress-report.md` | Printable/email-friendly Markdown tables |
 | `reports/progress.json` | Machine-readable summary + `dashboard_rows` |
-| `reports/.last-run.ndjson` | One JSON record per exercise (intermediate; handy for debugging) |
+| `reports/.last-run.ndjson` | One JSON object per exercise (input for `generate-progress-report.sh`; debugging) |
 
-These paths are listed in `.gitignore` so students do not accidentally commit scores; **`reports/.gitkeep`** preserves the folder in Git.
+**Locally:** run **`bash scripts/run-all-tests.sh`** — it clears **`reports/.last-run.ndjson`**, runs tests, then runs **`scripts/generate-progress-report.sh`** unless **`SKIP_PROGRESS_REPORT=1`** is set.
 
-### Downloading reports from GitHub Actions
+These paths are **`.gitignore`d`** so scores don’t get committed accidentally; **`reports/.gitkeep`** keeps the folder in Git.
+
+### GitHub Actions — download **`progress-reports`** only
+
+On **Actions → Exercise tests →** pick a run → **Artifacts**:
+
+| Artifact name | Use for grading? | What it is |
+| --- | --- | --- |
+| **`progress-reports`** | **Yes** | **`progress-report.md`** + **`progress.json`** merged across all exercises (`Aggregate progress reports` job). |
+| **`ci-lesson-bundle-*`** | **No** | Large internal ZIP (~lab + APT snapshot) so runners share `setup.sh`/`lab/` — **not** your scorecard. Auto-deleted after **3 days**. |
+| **`matrix-ndjson-*`** | **No** | Tiny shards consumed only by aggregation — ignore unless debugging CI. |
+
+Steps:
 
 1. Open **Actions → Exercise tests**.
-2. Select a workflow run for the student’s fork/branch.
-3. Download the **`progress-reports`** artifact (contains `progress-report.md` and `progress.json`).
-4. Optionally read the generated **job summary** on the run page for a one-line pass/skip/fail overview.
+2. Select the run (fork/branch).
+3. Download **`progress-reports`** only for grading/archival.
+4. Optional: **Aggregate progress reports** job → **Summary** for a short Markdown overview.
 
-Repeat per student fork (or integrate artifacts into your LMS later using `progress.json`).
-
-**Parallel CI:** Each exercise uploads a small **`matrix-ndjson-*`** fragment (`reports/.last-run.ndjson`). The **`aggregate_reports`** job downloads all fragments, concatenates them, and **`scripts/generate-progress-report.sh`** sorts rows by **`lesson_number`** then **`exercise_number`**, so combined **`progress.json`** / **`progress-report.md`** do not depend on job finish order. Top-level **`last_run_utc`** in **`progress.json`** is the **latest** shard timestamp after merge.
+Parallel shards upload **`matrix-ndjson-*`**; **`aggregate_reports`** concatenates them (sorted paths), then **`scripts/generate-progress-report.sh`** **`sort_by(.lesson_number, .exercise_number)`**, so ordering does not depend on which exercise job finished first. Combined **`progress.json`** header **`last_run_utc`** is the **latest** shard timestamp.
 
 ## Reading `progress.json`
 
@@ -83,7 +93,7 @@ CI uses **two workflow layers** so each lesson splits into **parallel exercise j
 | Workflow | Role |
 | --- | --- |
 | **Root:** [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) | **`discover`** — [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) with **`CI_DISCOVER_SCOPE=root_lessons`** emits one matrix row per lesson (`^[0-9]{2}[[:space:]]`…). **`lesson_suite`** — outer matrix runs **one reusable workflow per lesson in parallel** (no **`max-parallel`** cap), passing **`lesson_dir`**, **`lesson_job_title`**, and **`lesson_cache_key`** (`matrix.key`, e.g. `01__lesson`). **`aggregate_reports`** / **`enforce_success`** unchanged. |
-| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`prepare_lesson`** — discovers exercises (**`lesson_exercises`** scope), runs **`sudo apt-get update`** once, installs packages from **[`.github/ci-apt-packages.txt`](.github/ci-apt-packages.txt)** via **`scripts/ci-apt-install-packages.sh`**, runs **`scripts/setup.sh` once**, packs **`lab/`** into **`lesson-lab.tgz`**, snapshots **`/var/cache/apt/archives`** + **`/var/lib/apt/lists`** into **`ci-apt-snapshot.tgz`**, uploads **one** artifact **`lesson-ci-<lesson_cache_key>`** containing both tarballs (one download per exercise job). **`prepare_lesson`** still uses **`actions/cache`** on **`/var/cache/apt/archives`** across workflow runs. **`test_exercises`** — matrix jobs run **in parallel** (GitHub default concurrency): restore APT snapshot (no **`apt-get update`**), reinstall packages, restore **`lab/`**, run filtered **`run-all-tests.sh`**. |
+| **Reusable:** [`.github/workflows/exercise-lesson-suite.yml`](.github/workflows/exercise-lesson-suite.yml) | **`prepare_lesson`** — discovers exercises (**`lesson_exercises`** scope), runs **`sudo apt-get update`** once, installs packages from **[`.github/ci-apt-packages.txt`](.github/ci-apt-packages.txt)** via **`scripts/ci-apt-install-packages.sh`**, runs **`scripts/setup.sh` once**, packs **`lab/`** into **`lesson-lab.tgz`**, snapshots **`/var/cache/apt/archives`** + **`/var/lib/apt/lists`** into **`ci-apt-snapshot.tgz`**, uploads internal artifact **`ci-lesson-bundle-<lesson_cache_key>`** (short retention). **`prepare_lesson`** uses **`actions/cache`** on **`/var/cache/apt/archives`** across workflow runs. **`test_exercises`** — parallel matrix jobs restore bundle + APT, run **`SKIP_PROGRESS_REPORT=1`** **`run-all-tests.sh`** (NDJSON shard only), upload **`matrix-ndjson-*`**. |
 
 ```mermaid
 flowchart LR
@@ -109,9 +119,7 @@ flowchart LR
 - **Lesson suites** can run **in parallel** at the root (no **`max-parallel`** cap); GitHub queues only when your account hits concurrency limits.
 - **Exercise jobs** inside each lesson suite run **in parallel** by default (same caveat).
 
-Combined **`progress.json`** / NDJSON order follows **`find … \| LC_ALL=C sort`** in **`aggregate_reports`**, not job completion order.
-
-Artifacts from reusable workflow runs attach to the **same root workflow run**, so aggregation still uses **`download-artifact`** with pattern **`matrix-ndjson-*`**.
+Combined **`progress.json`** / NDJSON merge order follows **`find … \| LC_ALL=C sort`** in **`aggregate_reports`**, not job completion order.
 
 **Discovery env**
 

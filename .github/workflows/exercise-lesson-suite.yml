@@ -67,14 +67,15 @@ jobs:
             -C / var/cache/apt/archives var/lib/apt/lists > ci-apt-snapshot.tgz
           [[ -s ci-apt-snapshot.tgz ]]
 
-      # Single artifact ⇒ one download per exercise job (smaller Actions overhead than two uploads).
-      - name: Upload lesson CI bundle (lab + APT snapshot)
+      # Internal-only bundle (~60MB): lab tarball + APT snapshot for exercise runners — NOT grading reports.
+      - name: Upload CI lesson bundle (lab + APT snapshot)
         uses: actions/upload-artifact@v7
         with:
-          name: lesson-ci-${{ inputs.lesson_cache_key }}
+          name: ci-lesson-bundle-${{ inputs.lesson_cache_key }}
           path: |
             lesson-lab.tgz
             ci-apt-snapshot.tgz
+          retention-days: 3
 
   test_exercises:
     name: ${{ matrix.job_title }}
@@ -86,10 +87,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download lesson CI bundle from prepare_lesson
+      - name: Download CI lesson bundle from prepare_lesson
         uses: actions/download-artifact@v8
         with:
-          name: lesson-ci-${{ inputs.lesson_cache_key }}
+          name: ci-lesson-bundle-${{ inputs.lesson_cache_key }}
           path: downloaded/
 
       - name: Restore APT snapshot (skip apt-get update on fresh runners)
@@ -109,6 +110,7 @@ jobs:
           PROGRESS_STUDENT_ID: ${{ github.actor }}
           RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
           RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
+          SKIP_PROGRESS_REPORT: "1"
         run: bash scripts/run-all-tests.sh
         continue-on-error: true
 

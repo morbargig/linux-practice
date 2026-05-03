@@ -90,7 +90,7 @@ cd linux-practice-find-loops
 ./scripts/run-all-tests.sh
 ```
 
-**CI:** pushes and pull requests run [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) on Ubuntu (installs `tree` + `jq`, runs `setup.sh`, then the harness). Download the **`progress-reports`** artifact from the Actions run for Markdown/JSON suitable for instructors.
+**CI:** pushes and PRs run [`.github/workflows/exercise-tests.yml`](.github/workflows/exercise-tests.yml) on Ubuntu. For grades/archival download only the **`progress-reports`** artifact from the Actions run (**`progress-report.md`** + **`progress.json`**). Ignore **`ci-lesson-bundle-*`** (internal lab/APTs for runners — short-lived).
 
 **Students:** failing Actions runs are normal until you finish the exercises—the workflow runs the same full harness as `./scripts/run-all-tests.sh`.
 
