@@ -74,6 +74,32 @@ Adjust the corresponding `test.sh` if your class policy differs.
 - **`main`** is the **unresolved** student template (TODOs / `_____` placeholders). Learners fork or clone from **`main`**; CI on **`main`** is expected to fail until work is finished (aside from deliberate **skip** tests).
 - **Do not merge** reference or solution branches into **`main`** for repos handed to students. Keep worked answers on a **separate branch or private fork**, rebasing onto **`main`** whenever the template changes—same pattern as an instructor-only “always-green baseline” branch mentioned under Troubleshooting.
 
+## CI matrix (GitHub Actions)
+
+The **Exercise tests** workflow (`.github/workflows/exercise-tests.yml`) is split for a clear Actions UI:
+
+| Job | Role |
+| --- | --- |
+| **discover** | Runs [`scripts/ci-discover-matrix.sh`](scripts/ci-discover-matrix.sh) (Python helper) to scan `exercises/` with the **same** lesson naming rule as [`scripts/run-all-tests.sh`](scripts/run-all-tests.sh) (`^[0-9]{2}[[:space:]]`…). Writes a dynamic `matrix` output—**no workflow edits** when you add lessons or exercise folders. |
+| **test_matrix** | Parallel Ubuntu jobs (`fail-fast: false`). Each cell sets **`RUN_LESSON_DIR`** and, in *exercise* mode, **`RUN_EXERCISE_SLUG`**, then runs `bash scripts/run-all-tests.sh`. Job display names use short keys (`01__lesson`, `04__09-awk-report`, …). |
+| **aggregate_reports** | Downloads all `matrix-ndjson-*` fragments, merges `.last-run.ndjson` lines, runs [`scripts/generate-progress-report.sh`](scripts/generate-progress-report.sh), uploads the combined **`progress-reports`** artifact, and prints a combined job summary. |
+| **enforce_success** | Fails the workflow if **any** matrix cell failed (aggregate still runs via `if: always()` so you keep partial reports). |
+
+**Granularity**
+
+- **Push / pull_request** runs default to **`lesson`** (one parallel job per lesson folder; fewer billed minutes).
+- **workflow_dispatch → Run workflow** offers **granularity** `lesson` or **`exercise`** (one job per exercise subfolder; more granular UI, higher total minutes because each cell repeats checkout + apt + `setup.sh`).
+
+Parallel runners each have an **isolated** workspace, so concurrent `lab/` writes do not clash.
+
+**Local filtered run** (matches what CI passes per cell):
+
+```bash
+RUN_LESSON_DIR='01 — Linux Fundamentals' RUN_EXERCISE_SLUG='03-find' bash scripts/run-all-tests.sh
+```
+
+Omit **`RUN_EXERCISE_SLUG`** to execute every exercise under that lesson.
+
 ## Adding a new exercise
 
 1. Create **`exercises/<NN — Lesson>/<mm-slug>/`** with README + starter scripts (keep `_____` placeholders if you want CI to fail until completion).
@@ -91,7 +117,7 @@ Adjust the corresponding `test.sh` if your class policy differs.
    bash scripts/run-all-tests.sh
    ```
 
-5. Commit and push; **Exercise tests** runs automatically when `exercises/**`, `scripts/**`, or the workflow changes.
+5. Commit and push; **Exercise tests** runs automatically when `exercises/**`, `scripts/**`, or the workflow changes. CI discovers lessons/exercises dynamically (see **CI matrix** above).
 
 ## Troubleshooting
 

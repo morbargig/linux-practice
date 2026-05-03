@@ -19,13 +19,41 @@ on:
       - "docs/**"
       - "README.md"
       - ".github/workflows/exercise-tests.yml"
+  workflow_dispatch:
+    inputs:
+      granularity:
+        description: "Matrix granularity — lesson (fewer jobs) or exercise (one job per exercise folder)"
+        type: choice
+        required: false
+        default: lesson
+        options:
+          - lesson
+          - exercise
 
 permissions:
   contents: read
 
 jobs:
-  exercises:
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Discover exercise matrix
+        id: set_matrix
+        env:
+          CI_MATRIX_GRANULARITY: ${{ github.event.inputs.granularity || 'lesson' }}
+        run: bash scripts/ci-discover-matrix.sh
+
+  test_matrix:
+    name: ${{ matrix.key }}
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,34 +65,99 @@ jobs:
       - name: Prepare lab fixtures
         run: bash scripts/setup.sh
 
-      - name: Run all exercise tests + reports
-        id: tests
+      - name: Run exercise tests (filtered)
+        id: filtered_tests
         env:
           PROGRESS_STUDENT_ID: ${{ github.actor }}
+          RUN_LESSON_DIR: ${{ matrix.lesson_dir }}
+          RUN_EXERCISE_SLUG: ${{ matrix.exercise_slug }}
         run: bash scripts/run-all-tests.sh
         continue-on-error: true
 
-      - name: Upload progress artifacts
+      - name: Upload NDJSON fragment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-ndjson-${{ matrix.key }}
+          path: reports/.last-run.ndjson
+          if-no-files-found: ignore
+
+      - name: Cell summary
+        if: always()
+        run: |
+          {
+            echo "### Matrix cell \`${{ matrix.key }}\`"
+            echo ""
+            echo "- **Lesson dir:** \`${{ matrix.lesson_dir }}\`"
+            echo "- **Exercise slug:** \`${{ matrix.exercise_slug }}\` (empty = whole lesson)"
+            echo "- **Outcome:** \`${{ steps.filtered_tests.outcome }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Propagate test failure
+        if: steps.filtered_tests.outcome != 'success'
+        run: exit 1
+
+  aggregate_reports:
+    name: Aggregate progress reports
+    needs: test_matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: matrix-ndjson-*
+          merge-multiple: true
+          path: artifacts/
+
+      - name: Merge NDJSON and generate reports
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+          mkdir -p reports
+          mapfile -t files < <(find artifacts -type f -name '.last-run.ndjson' | LC_ALL=C sort || true)
+          if ((${#files[@]} == 0)); then
+            echo "### Aggregate warning" >> "$GITHUB_STEP_SUMMARY"
+            echo "No NDJSON fragments were found (no \`.last-run.ndjson\` under downloaded artifacts)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat "${files[@]}" > reports/.last-run.ndjson
+          bash scripts/generate-progress-report.sh
+
+      - name: Upload combined progress artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: progress-reports
           path: |
             reports/progress-report.md
             reports/progress.json
+          if-no-files-found: ignore
 
-      - name: Job summary
+      - name: Combined job summary
         if: always()
         run: |
           if [[ -f reports/progress.json ]]; then
-            echo "### Exercise CI summary" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '"**Overall:** \(.summary.passed) passed, \(.summary.failed) failed, \(.summary.skipped) skipped — **\(.summary.percent)%** graded progress"' reports/progress.json >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Download **progress-reports** artifact for Markdown + JSON." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "progress.json missing — tests may have failed before report generation." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "### Exercise CI — combined"
+              echo ""
+              jq -r '"**Overall:** \(.summary.passed) passed, \(.summary.failed) failed, \(.summary.skipped) skipped — **\(.summary.percent)%** graded progress"' reports/progress.json
+              echo ""
+              echo "Download the **progress-reports** artifact for Markdown + JSON."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Enforce test failures fail the workflow
-        if: steps.tests.outcome != 'success'
-        run: exit 1
+  enforce_success:
+    name: Workflow gate
+    needs: test_matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any matrix cell failed
+        run: |
+          if [[ "${{ needs.test_matrix.result }}" != "success" ]]; then
+            echo "One or more matrix jobs failed (result=${{ needs.test_matrix.result }})."
+            exit 1
+          fi
