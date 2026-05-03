@@ -21,7 +21,7 @@ run-name: "${{ inputs.lesson_job_title }}"
 
 permissions:
   contents: read
-  actions: write # actions/cache save/restore for APT archives
+  actions: write # actions/cache + artifact uploads
 
 jobs:
   # Discovery + apt + lab snapshot in one job (avoids a separate discover runner per lesson).
@@ -40,18 +40,33 @@ jobs:
           CI_LESSON_DIR: ${{ inputs.lesson_dir }}
         run: bash scripts/ci-discover-matrix.sh
 
-      - name: Cache APT archives
+      - name: Restore APT deb cache (workspace mirror)
         uses: actions/cache@v5
         with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-archives-${{ hashFiles('.github/ci-apt-packages.txt') }}
+          path: .ci-apt-archives
+          key: ${{ runner.os }}-apt-archives-wsmirror-${{ hashFiles('.github/ci-apt-packages.txt') }}
           restore-keys: |
-            ${{ runner.os }}-apt-archives-
+            ${{ runner.os }}-apt-archives-wsmirror-
+
+      - name: Apply cached .debs to system APT archives
+        run: |
+          sudo mkdir -p /var/cache/apt/archives
+          shopt -s nullglob
+          debs=(.ci-apt-archives/*.deb)
+          if ((${#debs[@]})); then
+            sudo rsync -a --exclude='partial/' .ci-apt-archives/ /var/cache/apt/archives/
+          fi
 
       - name: Install tooling used by exercises and harness
         run: |
           sudo apt-get update -qq
           bash scripts/ci-apt-install-packages.sh .github/ci-apt-packages.txt
+
+      - name: Refresh workspace APT mirror (for cache save)
+        run: |
+          mkdir -p .ci-apt-archives
+          sudo rsync -a --exclude='partial/' /var/cache/apt/archives/ .ci-apt-archives/
+          sudo chown -R "$USER:$USER" .ci-apt-archives
 
       - name: Run setup.sh once for this lesson
         run: bash scripts/setup.sh
