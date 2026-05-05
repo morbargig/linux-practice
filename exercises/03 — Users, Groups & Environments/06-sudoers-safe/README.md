@@ -9,7 +9,7 @@ Learn the correct way to edit sudo permissions.
 3. Explain what could go wrong if you edit sudoers with a normal text editor.
 
 ## Deliverable
-Create `visudo-report.md`:
+Create or edit `visudo-report.md` (a starter template is in this folder):
 - 3–5 bullets explaining:
   - what `visudo` does
   - why syntax matters

@@ -55,11 +55,11 @@ Top-level fields:
 
 | Location | Reason |
 | --- | --- |
-| `03-create-user` | Interactive `passwd` / destructive provisioning |
-| `04-groups-membership` | Expects pre-seeded accounts and privileged group edits |
-| `06-sudoers-safe` | README-only; no `*.sh` deliverable in-repo |
+| `03-create-user` | **`skip` after** placeholders are cleared: `passwd` / `useradd` are **not executed** in CI (**`fail`** while `create_user.sh` contains `_____`). |
+| `04-groups-membership` | Same pattern: stubs must be complete; **`usermod`/`groupadd` not run** in CI (**`fail`** while placeholders remain). |
+| `06-sudoers-safe` | `visudo-report.md` must have no `_____`; narrative review stays **offline** (**`fail`** until the template is filled). |
 | `05-routing-and-gateway` | Skips automatically if `/usr/sbin/ip` is missing (common on macOS); runs on Ubuntu CI |
-| `06-firewall-basics` | Manual UFW inspection by design |
+| `06-firewall-basics` | **`skip` after** `task.sh` has no `_____`; UFW remains **manual** (stubs still **`fail`** like other exercises). |
 
 Adjust the corresponding `test.sh` if your class policy differs.
 

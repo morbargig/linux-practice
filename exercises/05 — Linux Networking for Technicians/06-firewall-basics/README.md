@@ -36,7 +36,7 @@ chmod +x task.sh
 ./task.sh
 ```
 
-This practice has **no** `test.sh` because firewall checks can require elevated privileges and should not be automated here.
+Automated **`test.sh`** only checks that **`task.sh`** no longer contains `_____` placeholders; UFW and `sudo` steps stay **manual**, as above.
 
 ## Docs
 

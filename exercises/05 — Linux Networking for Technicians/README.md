@@ -44,9 +44,9 @@ In this lesson, you will practice how a Linux technician checks IP addresses, te
 
 ```bash
 cd /path/to/the/practice-folder
-chmod +x task.sh test.sh   # omit test.sh in 06-firewall-basics
+chmod +x task.sh test.sh   # firewall still uses test.sh only to enforce completed stubs
 ./task.sh
-./test.sh                  # not provided for firewall practice
+./test.sh                  # 06-firewall-basics: checks placeholders; UFW itself stays manual
 ```
 
 Some tests may show **WARN** if the internet is blocked or a tool is not installed. That is normal in restricted lab environments.
