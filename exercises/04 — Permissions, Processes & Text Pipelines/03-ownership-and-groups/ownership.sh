@@ -18,20 +18,20 @@ echo ""
 echo "2) Check current user and groups"
 # TODO: show current user and groups
 # HINT: Use id command to see current user and group memberships
-_____
+id
 
 echo ""
 echo "3) Change file owner (requires sudo)"
 # TODO: change owner to root (or another user if available)
 # HINT: Use sudo chown to change ownership
 # NOTE: This is a demonstration - in practice, change to a valid user
-sudo chown _____ "$TEST_FILE" 2>/dev/null || echo "Note: Owner change skipped (requires valid user)"
+sudo chown root "$TEST_FILE" 2>/dev/null || echo "Note: Owner change skipped (requires valid user)"
 
 echo ""
 echo "4) Change file group"
 # TODO: change group ownership
 # HINT: Use sudo chgrp or chown with :group syntax
-sudo chgrp _____ "$TEST_FILE" 2>/dev/null || echo "Note: Group change skipped (requires valid group)"
+sudo chgrp root "$TEST_FILE" 2>/dev/null || echo "Note: Group change skipped (requires valid group)"
 
 echo ""
 echo "5) Verify ownership change"

@@ -2,4 +2,4 @@
 set -e
 
 # TODO: print "Hello, Linux!"
-echo "_____"
+echo "Hello, Linux!"

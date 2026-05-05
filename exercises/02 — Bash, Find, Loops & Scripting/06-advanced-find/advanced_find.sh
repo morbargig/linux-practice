@@ -15,12 +15,12 @@ find "$LAB" -type f -name "*.txt" -exec ls -lh {} \;
 echo ""
 echo "3) Find files modified in last 2 days"
 # TODO: use -mtime -2 for files modified in last 2 days
-find "$LAB" -type f -mtime _____
+find "$LAB" -type f -mtime -2
 
 echo ""
 echo "4) Find files larger than 1MB"
 # TODO: use -size +1M
-find "$LAB" -type f -size _____
+find "$LAB" -type f -size +1M
 
 echo ""
 echo "5) Find and count .conf files"

@@ -2,33 +2,33 @@
 set -e
 
 echo "1) List all processes for current user"
+echo "Showing ps processes for user $USER"
 # TODO: show processes for current user
 # HINT: Use ps with option to show processes for a specific user
-ps -u _____
+ps -u "$USER"
 
 echo ""
 echo "2) Show all processes with detailed information"
-# TODO: show all processes with full details
-# HINT: Use ps with options that show all processes and full format
-ps _____
+echo "Full ps aux process listing follows"
+ps aux
 
 echo ""
 echo "3) Find bash processes"
 # TODO: find processes containing 'bash'
 # HINT: Use ps and grep to filter processes
-ps aux | grep _____
+ps aux | grep bash || true
 
 echo ""
 echo "4) Count total processes"
 # TODO: count total number of processes
 # HINT: Use ps to list processes and wc to count
-ps aux | wc -_____
+ps aux | wc -l
 
 echo ""
 echo "5) Show process tree"
 # TODO: show processes in tree format
 # HINT: Use ps with option to show process hierarchy
-ps _____ 2>/dev/null || echo "Tree format not available on this system"
+ps aux --forest 2>/dev/null || ps aux | head -25
 
 echo ""
 echo "Create process_list.txt with outputs and explanations"

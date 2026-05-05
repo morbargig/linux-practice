@@ -5,7 +5,7 @@ LAB="../../lab/files"
 
 echo "1) Use || for fallback"
 # TODO: try to cat a file, if it fails print "File not found"
-cat "$LAB/a.txt" || echo "_____"
+cat "$LAB/a.txt" || echo "File not found"
 
 echo ""
 echo "2) Check if command succeeded"

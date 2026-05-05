@@ -8,7 +8,9 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "1) Pipe ls to grep"
 # TODO: list files and pipe to grep to find .txt files
-ls -1 "$LAB" | _____ "\.txt"
+set +e
+ls -1 "$LAB" | grep '\.txt'
+set -e
 
 echo ""
 echo "2) Redirect output to file"

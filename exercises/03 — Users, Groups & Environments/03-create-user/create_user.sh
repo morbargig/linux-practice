@@ -7,19 +7,19 @@ echo "Creating user 'techstudent'..."
 # TODO: create user with home directory and bash shell
 # HINT: Use useradd with options to create home directory (-m) and set shell (-s)
 # NOTE: -m creates home directory, -s sets shell
-sudo useradd _____ -s /bin/bash techstudent
+sudo useradd -m -s /bin/bash techstudent
 
 echo ""
 echo "Setting password for techstudent..."
 # TODO: set password (will prompt for input)
 # HINT: Use the command that changes user passwords
-sudo passwd _____
+sudo passwd techstudent
 
 echo ""
 echo "Verifying user was created..."
 # TODO: check if user exists in /etc/passwd
 # HINT: Use grep to search for "techstudent" in /etc/passwd
-grep _____ /etc/passwd
+grep techstudent /etc/passwd
 
 echo ""
 echo "Switching to techstudent user..."
